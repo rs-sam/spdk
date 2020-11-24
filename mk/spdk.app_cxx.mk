@@ -38,10 +38,10 @@ include $(SPDK_ROOT_DIR)/mk/spdk.app_vars.mk
 # directory. If it is, change the APP location to build.
 APP_NAME := $(notdir $(APP))
 ifneq (,$(findstring $(SPDK_ROOT_DIR)/app,$(CURDIR)))
-	APP := $(APP_NAME:%=$(SPDK_ROOT_DIR)/build/bin/%)
+	APP := $(APP_NAME:%=$(SPDK_ROOT_DIR)/build/bin/%)$(APP_EXT)
 else
 ifneq (,$(findstring $(SPDK_ROOT_DIR)/examples,$(CURDIR)))
-	APP := $(APP_NAME:%=$(SPDK_ROOT_DIR)/build/examples/%)
+	APP := $(APP_NAME:%=$(SPDK_ROOT_DIR)/build/examples/%)$(APP_EXT)
 endif
 endif
 

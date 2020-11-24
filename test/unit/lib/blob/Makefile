@@ -34,17 +34,19 @@
 SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-HASH = \#
-CUNIT_VERSION = $(shell echo "$(HASH)include <CUnit/CUnit.h>" | $(CC) -E -dM - | sed -n -e 's/\#define CU_VERSION "\([0-9\.\-]*\).*/\1/p')
-ifeq ($(CUNIT_VERSION),2.1-3)
 DIRS-y = blob.c
+
+HASH = \#
+CUNIT_VERSION = $(shell echo "$(HASH)include <CUnit/CUnit.h>" | $(CC) $(COMMON_CFLAGS) -E -dM - | sed -n -e 's/\#define CU_VERSION "\([0-9\.\-]*\).*/\1/p')
+ifeq ($(CUNIT_VERSION),2.1-3)
+BUILD_DIRS-y = $(DIRS-y)
 else
 $(warning "blob_ut.c compilation skipped, only CUnit version 2.1-3 is supported")
 endif
 
 .PHONY: all clean $(DIRS-y)
 
-all: $(DIRS-y)
+all: $(BUILD_DIRS-y)
 clean: $(DIRS-y)
 
 include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk
