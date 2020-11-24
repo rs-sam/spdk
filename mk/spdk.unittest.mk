@@ -50,13 +50,16 @@ CFLAGS += -I$(SPDK_ROOT_DIR)/lib
 CFLAGS += -I$(SPDK_ROOT_DIR)/module
 CFLAGS += -I$(SPDK_ROOT_DIR)/test
 CFLAGS += -ffunction-sections
+
+ifneq ($(CC_TYPE)-$(OS),clang-Windows)
 LDFLAGS += -Wl,--gc-sections
+endif
 
 SPDK_LIB_LIST += thread util log
 
 LIBS += -lcunit $(SPDK_STATIC_LIB_LINKER_ARGS)
 
-APP = $(TEST_FILE:.c=)
+APP = $(TEST_FILE:.c=)$(APP_EXT)
 
 ifneq ($(UNIT_TEST_LINK_ENV),1)
 ENV_LINKER_ARGS =

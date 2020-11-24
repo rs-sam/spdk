@@ -34,7 +34,7 @@
 SPDK_ROOT_DIR := $(abspath $(CURDIR)/..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-.PHONY: all clean install uninstall
+.PHONY: all all-wpdk clean install uninstall
 
 DPDK_OPTS = -Denable_docs=false
 DPDK_CFLAGS =
@@ -47,6 +47,10 @@ ifeq ($(OS),FreeBSD)
 DPDK_KMODS = true
 endif
 DPDK_OPTS += -Denable_kmods=$(DPDK_KMODS)
+
+ifeq ($(CONFIG_DEBUG), y)
+DPDK_OPTS += --buildtype=debug
+endif
 
 # the drivers we use
 DPDK_DRIVERS = bus bus/pci bus/vdev mempool/ring
@@ -76,7 +80,9 @@ $(error Automatic DPDK cross build is not supported. Please compile DPDK manuall
 with e.g. `meson build --cross-file config/arm/arm64_armv8_linux_gcc`)
 endif
 
+ifneq ($(CC_TYPE)-$(OS),clang-Windows)
 DPDK_CFLAGS += -fPIC
+endif
 
 ifeq ($(CONFIG_DEBUG),y)
 DPDK_CFLAGS += -O0 -g
@@ -110,17 +116,24 @@ endif
 
 # Force-disable scan-build
 SUB_CC = $(patsubst %ccc-analyzer,$(DEFAULT_CC),$(CC))
+SUB_CXX = $(patsubst %c++-analyzer,$(DEFAULT_CXX),$(CXX))
 
 DPDK_ALL_DRIVER_DIRS = $(shell find $(SPDK_ROOT_DIR)/dpdk/drivers -mindepth 1 -type d)
 DPDK_ALL_DRIVERS = $(DPDK_ALL_DRIVER_DIRS:$(SPDK_ROOT_DIR)/dpdk/drivers/%=%)
 DPDK_DISABLED_DRVERS = $(filter-out $(DPDK_DRIVERS),$(DPDK_ALL_DRIVERS))
 
-ifeq ($(OS),Linux)
+ifneq ($(OS),FreeBSD)
 SED_INPLACE_FLAG = "-i"
 MESON_PREFIX = $(SPDK_ROOT_DIR)/dpdk/build
 else
 SED_INPLACE_FLAG = "-i ''"
 MESON_PREFIX = "/"
+endif
+
+ifeq ($(OS),Windows)
+WPDK_ALL = all-wpdk
+WPDK_TMP = $(SPDK_ROOT_DIR)/wpdk/build-tmp
+WPDK_OPTS =
 endif
 
 # Some ninja versions come with a (broken?) jobserver which defaults to use
@@ -133,7 +146,7 @@ endif
 
 MAKE_NUMJOBS := $(shell ps T | sed -nE 's/\s*$(MAKE_PID)\s.* (-j|--jobs=)( *[0-9]+).*/\1\2/p')
 
-all: $(SPDK_ROOT_DIR)/dpdk/build-tmp
+all: $(WPDK_ALL) $(SPDK_ROOT_DIR)/dpdk/build-tmp
 	$(Q)# DPDK doesn't handle nested make calls, so unset MAKEFLAGS
 	$(Q)env -u MAKEFLAGS ninja -C $(SPDK_ROOT_DIR)/dpdk/build-tmp $(MAKE_NUMJOBS)
 	$(Q) \
@@ -153,9 +166,9 @@ all: $(SPDK_ROOT_DIR)/dpdk/build-tmp
 		env -u MAKEFLAGS meson install -C $(SPDK_ROOT_DIR)/dpdk/build-tmp --only-changed > /dev/null; \
 	fi
 
-$(SPDK_ROOT_DIR)/dpdk/build-tmp: $(SPDK_ROOT_DIR)/mk/cc.mk $(SPDK_ROOT_DIR)/include/spdk/config.h
+$(SPDK_ROOT_DIR)/dpdk/build-tmp: $(WPDK_TMP) $(SPDK_ROOT_DIR)/mk/cc.mk $(SPDK_ROOT_DIR)/include/spdk/config.h
 	$(Q)rm -rf $(SPDK_ROOT_DIR)/dpdk/build $(SPDK_ROOT_DIR)/dpdk/build-tmp
-	$(Q)cd "$(SPDK_ROOT_DIR)/dpdk"; CC="$(SUB_CC)" meson --prefix="$(MESON_PREFIX)" --libdir lib -Dc_args="$(DPDK_CFLAGS)" -Dc_link_args="$(DPDK_LDFLAGS)" $(DPDK_OPTS) -Ddisable_drivers="$(shell echo $(DPDK_DISABLED_DRVERS) | sed -E "s/ +/,/g")" build-tmp
+	$(Q)cd "$(SPDK_ROOT_DIR)/dpdk"; CC="$(SUB_CC)" CXX="$(SUB_CXX)" meson --prefix="$(MESON_PREFIX)" --libdir lib -Dc_args="$(DPDK_CFLAGS)" -Dc_link_args="$(DPDK_LDFLAGS)" $(DPDK_OPTS) -Ddisable_drivers="$(shell echo $(DPDK_DISABLED_DRVERS) | sed -E "s/ +/,/g")" build-tmp
 	$(Q)sed $(SED_INPLACE_FLAG) 's/#define RTE_EAL_PMD_PATH .*/#define RTE_EAL_PMD_PATH ""/g' $(SPDK_ROOT_DIR)/dpdk/build-tmp/rte_build_config.h
 	$(Q) \
 	# TODO Meson build adds libbsd dependency when it's available. This means any app will be \
@@ -165,8 +178,16 @@ $(SPDK_ROOT_DIR)/dpdk/build-tmp: $(SPDK_ROOT_DIR)/mk/cc.mk $(SPDK_ROOT_DIR)/incl
 	# functions.
 	$(Q)sed $(SED_INPLACE_FLAG) 's/#define RTE_USE_LIBBSD .*//g' $(SPDK_ROOT_DIR)/dpdk/build-tmp/rte_build_config.h
 
+all-wpdk: $(SPDK_ROOT_DIR)/dpdk/build-tmp $(SPDK_ROOT_DIR)/wpdk/build-tmp
+	$(Q)env -u MAKEFLAGS ninja -C $(SPDK_ROOT_DIR)/wpdk/build-tmp $(MAKE_NUMJOBS)
+	$(Q)env -u MAKEFLAGS meson install -C $(SPDK_ROOT_DIR)/wpdk/build-tmp --only-changed > /dev/null;
+
+$(SPDK_ROOT_DIR)/wpdk/build-tmp: $(SPDK_ROOT_DIR)/mk/cc.mk $(SPDK_ROOT_DIR)/include/spdk/config.h
+	$(Q)rm -rf $(SPDK_ROOT_DIR)/wpdk/build-tmp
+	$(Q)cd "$(SPDK_ROOT_DIR)/wpdk"; CC="$(SUB_CC)" CXX="$(SUB_CXX)" meson --prefix="$(MESON_PREFIX)" --libdir lib -Dc_args="$(DPDK_CFLAGS)" -Dc_link_args="$(DPDK_LDFLAGS)" $(WPDK_OPTS) build-tmp
+
 clean:
-	$(Q)rm -rf $(SPDK_ROOT_DIR)/dpdk/build $(SPDK_ROOT_DIR)/dpdk/build-tmp
+	$(Q)rm -rf $(SPDK_ROOT_DIR)/dpdk/build $(SPDK_ROOT_DIR)/dpdk/build-tmp $(SPDK_ROOT_DIR)/wpdk/build-tmp
 
 install:
 	@:

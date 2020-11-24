@@ -65,6 +65,11 @@ for i in "$@"; do
 done
 
 OS=$(uname)
+case "$OS" in
+	"MSYS"*)
+		OS="Windows"
+		;;
+esac
 
 : ${CC=cc}
 : ${CXX=c++}
@@ -106,6 +111,10 @@ case "$LD_TYPE" in
 esac
 
 CCAR="ar"
+if [ "$CC_TYPE" = "clang" -a "$OS" = "Windows" ]; then
+	CCAR="llvm-ar"
+fi
+
 if [ "$LTO" = "y" ]; then
 	if [ "$CC_TYPE" = "clang" ]; then
 		if [ "$LD_TYPE" != "gold" ]; then

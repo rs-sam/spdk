@@ -260,12 +260,21 @@ test_strtol(void)
 	const char *val3 = "-9223372036854775808";
 	/* LONG_MIN + 1 */
 	const char *val4 = "-9223372036854775807";
+#ifdef _WIN32
+	/* LONG_MAX - 1 */
+	const char *val5 = "2147483646";
+	/* LONG_MAX */
+	const char *val6 = "2147483647";
+	/* LONG_MAX + 1 */
+	const char *val7 = "2147483648";
+#else
 	/* LONG_MAX - 1 */
 	const char *val5 = "9223372036854775806";
 	/* LONG_MAX */
 	const char *val6 = "9223372036854775807";
 	/* LONG_MAX + 1 */
 	const char *val7 = "9223372036854775808";
+#endif
 	/* digits + chars */
 	const char *val8 = "10_is_ten";
 	/* chars + digits */

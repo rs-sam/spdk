@@ -8,6 +8,8 @@
 *.ko
 *.log
 *.o
+*.exe
+*.pdb
 *.pyc
 *.so
 *.so.*
