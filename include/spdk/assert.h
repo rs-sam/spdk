@@ -44,6 +44,10 @@
 extern "C" {
 #endif
 
+#if defined(__MINGW32__) && !defined(static_assert) && !defined(__cplusplus)
+#define static_assert _Static_assert
+#endif
+
 #ifdef static_assert
 #define SPDK_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
 #else

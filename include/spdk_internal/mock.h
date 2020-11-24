@@ -67,12 +67,20 @@
 	SPDK_CU_ASSERT_FATAL(ut_ ## fn ## _mocked == false)
 
 /* for declaring function protoypes for wrappers */
+#if !defined(_WIN32) || !defined(__MINGW32__)
 #define DECLARE_WRAPPER(fn, ret, args) \
 	extern bool ut_ ## fn ## _mocked; \
 	extern ret ut_ ## fn; \
 	ret __wrap_ ## fn args; ret __real_ ## fn args
+#else
+#define DECLARE_WRAPPER(fn, ret, args) \
+	extern bool ut_ ## fn ## _mocked; \
+	extern ret ut_ ## fn; \
+	ret __wrap_wpdk_ ## fn args; ret __real_wpdk_ ## fn args
+#endif
 
 /* for defining the implmentation of wrappers for syscalls */
+#if !defined(_WIN32) || !defined(__MINGW32__)
 #define DEFINE_WRAPPER(fn, ret, dargs, pargs) \
 	DEFINE_RETURN_MOCK(fn, ret); \
 	__attribute__((used)) ret __wrap_ ## fn dargs \
@@ -83,6 +91,18 @@
 			return MOCK_GET(fn); \
 		} \
 	}
+#else
+#define DEFINE_WRAPPER(fn, ret, dargs, pargs) \
+	DEFINE_RETURN_MOCK(fn, ret); \
+	__attribute__((used)) ret __wrap_wpdk_ ## fn dargs \
+	{ \
+		if (!ut_ ## fn ## _mocked) { \
+			return __real_wpdk_ ## fn pargs; \
+		} else { \
+			return MOCK_GET(fn); \
+		} \
+	}
+#endif
 
 /* DEFINE_STUB is for defining the implmentation of stubs for SPDK funcs. */
 #define DEFINE_STUB(fn, ret, dargs, val) \
@@ -121,6 +141,10 @@ DECLARE_WRAPPER(recvmsg, ssize_t, (int sockfd, struct msghdr *msg, int flags));
 DECLARE_WRAPPER(sendmsg, ssize_t, (int sockfd, const struct msghdr *msg, int flags));
 
 DECLARE_WRAPPER(writev, ssize_t, (int fd, const struct iovec *iov, int iovcnt));
+
+#if defined(_WIN32) && defined(__MINGW32__)
+#define ___wrap_unlink __wrap_wpdk_unlink
+#endif
 
 /* unlink is done a bit differently. */
 extern char *g_unlink_path;

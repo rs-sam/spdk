@@ -41,7 +41,9 @@ DIRS-y += iscsi_top
 DIRS-y += iscsi_tgt
 DIRS-y += spdk_tgt
 DIRS-y += spdk_lspci
+ifneq ($(OS),Windows)
 DIRS-y += spdk_top
+endif
 ifeq ($(OS),Linux)
 DIRS-$(CONFIG_VHOST) += vhost
 DIRS-y += spdk_dd

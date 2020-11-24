@@ -69,6 +69,9 @@ endif
 ifneq ($(filter freebsd%,$(TARGET_TRIPLET_WORDS)),)
 OS = FreeBSD
 endif
+ifneq ($(filter mingw% windows%,$(TARGET_TRIPLET_WORDS)),)
+OS = Windows
+endif
 
 TARGET_ARCHITECTURE ?= $(CONFIG_ARCH)
 TARGET_MACHINE := $(firstword $(TARGET_TRIPLET_WORDS))
@@ -112,21 +115,30 @@ COMMON_CFLAGS += -Wformat -Wformat-security
 COMMON_CFLAGS += -D_GNU_SOURCE
 
 # Always build PIC code so that objects can be used in shared libs and position-independent executables
+ifneq ($(CC_TYPE)-$(OS),clang-Windows)
 COMMON_CFLAGS += -fPIC
+endif
 
 # Enable stack buffer overflow checking
+ifneq ($(CC_TYPE)-$(OS),gcc-Windows)
+## HACK - don't understand why this doesn't work!
 COMMON_CFLAGS += -fstack-protector
+endif
 
 # Prevent accidental multiple definitions of global variables
 COMMON_CFLAGS += -fno-common
 
 # Enable full RELRO - no lazy relocation (resolve everything at load time).
 # This allows the GOT to be made read-only early in the loading process.
+ifneq ($(OS),Windows)
 LDFLAGS += -Wl,-z,relro,-z,now
+endif
 
 # Make the stack non-executable.
 # This is the default in most environments, but it doesn't hurt to set it explicitly.
+ifneq ($(OS),Windows)
 LDFLAGS += -Wl,-z,noexecstack
+endif
 
 # Specify the linker to use
 ifneq ($(LD_TYPE),)
@@ -193,6 +205,9 @@ endif
 
 ifeq ($(CONFIG_DEBUG), y)
 COMMON_CFLAGS += -DDEBUG -O0 -fno-omit-frame-pointer
+ifeq ($(CC_TYPE)-$(OS),clang-Windows)
+LDFLAGS += -g
+endif
 else
 COMMON_CFLAGS += -DNDEBUG -O2
 # Enable _FORTIFY_SOURCE checks - these only work when optimizations are enabled.
@@ -229,8 +244,10 @@ ifneq (, $(SPDK_GIT_COMMIT))
 COMMON_CFLAGS += -DSPDK_GIT_COMMIT=$(SPDK_GIT_COMMIT)
 endif
 
+ifneq ($(OS),Windows)
 COMMON_CFLAGS += -pthread
 LDFLAGS += -pthread
+endif
 
 CFLAGS   += $(COMMON_CFLAGS) -Wno-pointer-sign -Wstrict-prototypes -Wold-style-definition -std=gnu99
 CXXFLAGS += $(COMMON_CFLAGS)
@@ -295,7 +312,7 @@ LIB_C=\
 
 # Clean up generated files listed as arguments plus a default list
 CLEAN_C=\
-	$(Q)rm -f *.a *.o *.d *.d.tmp *.gcno *.gcda
+	$(Q)rm -f *.a *.o *.d *.d.tmp *.pdb *.gcno *.gcda
 
 # Install a library
 INSTALL_LIB=\
@@ -395,6 +412,12 @@ define add_no_as_needed
 -Wl,--no-as-needed $(1) -Wl,-as-needed
 endef
 
+ifneq ($(CC_TYPE)-$(OS),clang-Windows)
 define add_whole_archive
 -Wl,--whole-archive $(1) -Wl,--no-whole-archive
 endef
+else
+define add_whole_archive
+$(1:%=-Wl,-wholearchive:%)
+endef
+endif
