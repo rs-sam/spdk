@@ -134,6 +134,10 @@ ifeq ($(OS),Windows)
 WPDK_ALL = all-wpdk
 WPDK_TMP = $(SPDK_ROOT_DIR)/wpdk/build-tmp
 WPDK_OPTS =
+ifeq ($(CONFIG_DEBUG), y)
+WPDK_OPTS += --buildtype=debug
+endif
+WPDK_OPTS += -Dmachine=$(TARGET_ARCHITECTURE)
 endif
 
 # Some ninja versions come with a (broken?) jobserver which defaults to use
