@@ -65,8 +65,8 @@ for i in "$@"; do
 done
 
 OS=$(uname)
-case "$OS" in
-	"MSYS"*)
+case "$OS-$CROSS_PREFIX" in
+	MSYS*|*mingw*)
 		OS="Windows"
 		;;
 esac
@@ -83,6 +83,9 @@ if [ -z "$LD" ]; then
 	fi
 	if [ "$OS" = "FreeBSD" ]; then
 		LD=ld.lld
+	fi
+	if [ "$OS" = "Windows" ]; then
+		LD=ld
 	fi
 fi
 

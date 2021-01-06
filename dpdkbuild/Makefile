@@ -76,8 +76,12 @@ endif
 DPDK_OPTS += -Dmachine=$(TARGET_ARCHITECTURE)
 
 ifneq ($(CONFIG_CROSS_PREFIX),)
+ifeq ($(OS),Windows)
+DPDK_OPTS += --cross-file $(SPDK_ROOT_DIR)/wpdk/config/$(CONFIG_CROSS_PREFIX)
+else
 $(error Automatic DPDK cross build is not supported. Please compile DPDK manually \
 with e.g. `meson build --cross-file config/arm/arm64_armv8_linux_gcc`)
+endif
 endif
 
 ifneq ($(CC_TYPE)-$(OS),clang-Windows)
@@ -138,6 +142,9 @@ ifeq ($(CONFIG_DEBUG), y)
 WPDK_OPTS += --buildtype=debug
 endif
 WPDK_OPTS += -Dmachine=$(TARGET_ARCHITECTURE)
+ifneq ($(CONFIG_CROSS_PREFIX),)
+WPDK_OPTS += --cross-file $(SPDK_ROOT_DIR)/wpdk/config/$(CONFIG_CROSS_PREFIX)
+endif
 endif
 
 # Some ninja versions come with a (broken?) jobserver which defaults to use
