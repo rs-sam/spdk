@@ -1,0 +1,11 @@
+# Configuration
+configure				eol=lf
+CONFIG					eol=lf
+
+# Scripts
+*.sh                    eol=lf
+*.bat                   eol=crlf
+
+# control Files
+.gitignore              text
+.gitattributes          text
