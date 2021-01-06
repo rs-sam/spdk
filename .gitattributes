@@ -1,5 +1,6 @@
 # Configuration
 configure				eol=lf
+CONFIG					eol=lf
 
 # Scripts
 *.sh                    eol=lf
