@@ -1,0 +1,7 @@
+# Scripts
+*.sh                    eol=lf
+*.bat                   eol=crlf
+
+# control Files
+.gitignore              text
+.gitattributes          text
