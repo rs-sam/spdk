@@ -202,7 +202,10 @@ endif
 else
 COMMON_CFLAGS += -DNDEBUG -O2
 # Enable _FORTIFY_SOURCE checks - these only work when optimizations are enabled.
+ifneq ($(CONFIG_CROSS_PREFIX),x86_64-w64-mingw32)
+## HACK - link fails with a missing check function for cross builds
 COMMON_CFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
+endif
 endif
 
 ifeq ($(CONFIG_COVERAGE), y)
