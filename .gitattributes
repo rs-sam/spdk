@@ -1,3 +1,6 @@
+# Configuration
+configure				eol=lf
+
 # Scripts
 *.sh                    eol=lf
 *.bat                   eol=crlf
