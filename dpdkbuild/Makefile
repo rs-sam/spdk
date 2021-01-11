@@ -76,8 +76,8 @@ endif
 DPDK_OPTS += -Dmachine=$(TARGET_ARCHITECTURE)
 
 ifneq ($(CONFIG_CROSS_PREFIX),)
-ifeq ($(OS),Windows)
-DPDK_OPTS += --cross-file $(SPDK_ROOT_DIR)/wpdk/config/$(CONFIG_CROSS_PREFIX)
+ifeq ($(OS)-$(CONFIG_CROSS_PREFIX),Windows-x86_64-w64-mingw32)
+DPDK_OPTS += --cross-file $(SPDK_ROOT_DIR)/dpdk/config/x86/cross-mingw
 else
 $(error Automatic DPDK cross build is not supported. Please compile DPDK manually \
 with e.g. `meson build --cross-file config/arm/arm64_armv8_linux_gcc`)
