@@ -141,6 +141,10 @@ CC_TYPE=$(cat $rootdir/mk/cc.mk | grep "CC_TYPE=" | cut -d "=" -f 2)
 arch=$($CC -dumpmachine)
 sys_name=$(uname -s)
 
+if [[ $arch == *mingw* ]] || [[ $sys_name == MSYS* ]]; then
+	sys_name=Windows
+fi
+
 # Sanitize default configuration. All parameters set by user explicit should fail
 # Force no ISA-L if non-x86 or non-aarch64 architecture
 if [[ "${CONFIG[ISAL]}" = "y" ]]; then
@@ -150,7 +154,7 @@ if [[ "${CONFIG[ISAL]}" = "y" ]]; then
 	fi
 fi
 
-if [[ $sys_name == "FreeBSD" ]]; then
+if [[ $sys_name != "Linux" ]]; then
 	# Vhost, rte_vhost library and virtio are only supported on Linux.
 	CONFIG[VHOST]="n"
 	CONFIG[VIRTIO]="n"
@@ -529,7 +533,7 @@ if [[ $sys_name == "FreeBSD" ]]; then
 	fi
 fi
 
-if [[ $sys_name == "FreeBSD" ]]; then
+if [[ $sys_name != "Linux" ]]; then
 	if [[ "${CONFIG[VHOST]}" == "y" ]]; then
 		echo "Vhost is only supported on Linux."
 		exit 1
@@ -632,7 +636,11 @@ if [[ "${CONFIG[ISAL]}" = "y" ]]; then
 	ISAL_LOG=$rootdir/isa-l/spdk-isal.log
 	echo -n "Configuring ISA-L (logfile: $ISAL_LOG)..."
 	./autogen.sh &> $ISAL_LOG
-	./configure CFLAGS="-fPIC -g -O2" --enable-shared=no >> $ISAL_LOG 2>&1
+	if [[ -n "${CONFIG[CROSS_PREFIX]}" ]]; then
+		./configure CFLAGS="-fPIC -g -O2" --host="${CONFIG[CROSS_PREFIX]}" --enable-shared=no >> $ISAL_LOG 2>&1
+	else
+		./configure CFLAGS="-fPIC -g -O2" --enable-shared=no >> $ISAL_LOG 2>&1
+	fi
 	echo "done."
 	cd $rootdir
 fi
