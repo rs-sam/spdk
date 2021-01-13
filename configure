@@ -635,6 +635,10 @@ if [[ "${CONFIG[ISAL]}" = "y" ]]; then
 	cd $rootdir/isa-l
 	ISAL_LOG=$rootdir/isa-l/spdk-isal.log
 	echo -n "Configuring ISA-L (logfile: $ISAL_LOG)..."
+	if [[ $sys_name == "Windows" ]]; then
+		# Strip out CRs so that autogen.sh works correctly
+		sed -i -e's/\r$//' configure.ac
+	fi
 	./autogen.sh &> $ISAL_LOG
 	if [[ -n "${CONFIG[CROSS_PREFIX]}" ]]; then
 		./configure CFLAGS="-fPIC -g -O2" --host="${CONFIG[CROSS_PREFIX]}" --enable-shared=no >> $ISAL_LOG 2>&1
