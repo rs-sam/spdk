@@ -60,6 +60,3 @@ uninstall:
 clean:
 	$(Q)$(MAKE) -C $(SPDK_ROOT_DIR)/isa-l clean $(REDIRECT)
 	$(Q)rm -rf $(ISAL_DIR)/isa-l
-	$(Q)if [ "$(OS)" = "Windows" ]; then \
-		rm -f $(ISAL_DIR)/.libs/isal.lib; \
-	fi
