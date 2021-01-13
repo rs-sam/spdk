@@ -48,6 +48,9 @@ $(ISAL_DIR)/isa-l:
 
 all: $(ISAL_DIR)/isa-l
 	$(Q)$(MAKE) -C $(SPDK_ROOT_DIR)/isa-l all CC="$(SUB_CC)" $(REDIRECT)
+	$(Q)if [ "$(OS)" = "Windows" ]; then \
+		[ -f $(ISAL_DIR)/.libs/libisal.lib ] && ln -sf $(ISAL_DIR)/.libs/libisal.lib $(ISAL_DIR)/.libs/isal.lib; \
+	fi
 
 install: all
 
@@ -57,3 +60,6 @@ uninstall:
 clean:
 	$(Q)$(MAKE) -C $(SPDK_ROOT_DIR)/isa-l clean $(REDIRECT)
 	$(Q)rm -rf $(ISAL_DIR)/isa-l
+	$(Q)if [ "$(OS)" = "Windows" ]; then \
+		rm -f $(ISAL_DIR)/.libs/isal.lib; \
+	fi
