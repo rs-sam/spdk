@@ -48,6 +48,9 @@ $(ISAL_DIR)/isa-l:
 
 all: $(ISAL_DIR)/isa-l
 	$(Q)$(MAKE) -C $(SPDK_ROOT_DIR)/isa-l PROGRAMS= MANS= all CC="$(SUB_CC)" $(REDIRECT)
+	$(Q)if [ "$(CC_TYPE)-$(OS)" = "clang-Windows" -a -f $(SPDK_ROOT_DIR)/isa-l/.libs/libisal.a ]; then \
+		cp -f $(SPDK_ROOT_DIR)/isa-l/.libs/libisal.a $(SPDK_ROOT_DIR)/isa-l/.libs/isal.lib; \
+	fi
 
 install: all
 
