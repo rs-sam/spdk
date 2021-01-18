@@ -11,3 +11,6 @@
 [submodule "ocf"]
 	path = ocf
 	url = https://github.com/Open-CAS/ocf.git
+[submodule "wpdk"]
+	path = wpdk
+	url = https://github.com/wpdk/wpdk
