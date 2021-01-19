@@ -640,7 +640,7 @@ if [[ "${CONFIG[ISAL]}" = "y" ]]; then
 		./configure CFLAGS="-fPIC -g -O2" --host="${CONFIG[CROSS_PREFIX]}" --enable-shared=no >> $ISAL_LOG 2>&1
 	elif [[ $sys_name = "Windows" ]]; then
 		if [[ "$CC_TYPE" = "clang" ]]; then	
-			./configure CFLAGS="-g -O2 -Wl,/incremental:no" STRIP=strip --host="x86_64-w64-mingw32" --enable-shared=no >> $ISAL_LOG 2>&1
+			./configure CFLAGS="-O2" STRIP=strip --host="x86_64-w64-mingw32" --enable-shared=no >> $ISAL_LOG 2>&1
 		else
 			./configure CFLAGS="-fPIC -g -O2" STRIP=strip --host="x86_64-w64-mingw32" --enable-shared=no >> $ISAL_LOG 2>&1
 		fi
