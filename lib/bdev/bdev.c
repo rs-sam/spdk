@@ -3450,6 +3450,10 @@ spdk_bdev_notify_blockcnt_change(struct spdk_bdev *bdev, uint64_t size)
 	struct spdk_bdev_desc *desc;
 	int ret;
 
+	if (size == bdev->blockcnt) {
+		return 0;
+	}
+
 	pthread_mutex_lock(&bdev->internal.mutex);
 
 	/* bdev has open descriptors */
@@ -5271,6 +5275,34 @@ spdk_bdev_io_get_scsi_status(const struct spdk_bdev_io *bdev_io,
 		*asc = SPDK_SCSI_ASC_NO_ADDITIONAL_SENSE;
 		*ascq = SPDK_SCSI_ASCQ_CAUSE_NOT_REPORTABLE;
 		break;
+	}
+}
+
+void
+spdk_bdev_io_complete_aio_status(struct spdk_bdev_io *bdev_io, int aio_result)
+{
+	if (aio_result == 0) {
+		bdev_io->internal.status = SPDK_BDEV_IO_STATUS_SUCCESS;
+	} else {
+		bdev_io->internal.status = SPDK_BDEV_IO_STATUS_AIO_ERROR;
+	}
+
+	bdev_io->internal.error.aio_result = aio_result;
+
+	spdk_bdev_io_complete(bdev_io, bdev_io->internal.status);
+}
+
+void
+spdk_bdev_io_get_aio_status(const struct spdk_bdev_io *bdev_io, int *aio_result)
+{
+	assert(aio_result != NULL);
+
+	if (bdev_io->internal.status == SPDK_BDEV_IO_STATUS_AIO_ERROR) {
+		*aio_result = bdev_io->internal.error.aio_result;
+	} else if (bdev_io->internal.status == SPDK_BDEV_IO_STATUS_SUCCESS) {
+		*aio_result = 0;
+	} else {
+		*aio_result = -EIO;
 	}
 }
 

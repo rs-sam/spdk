@@ -426,6 +426,7 @@ enum spdk_nvme_ctrlr_flags {
 	SPDK_NVME_CTRLR_COMPARE_AND_WRITE_SUPPORTED	= 1 << 3, /**< Compare and write fused operations supported */
 	SPDK_NVME_CTRLR_SGL_REQUIRES_DWORD_ALIGNMENT	= 1 << 4, /**< Dword alignment is required for SGL */
 	SPDK_NVME_CTRLR_ZONE_APPEND_SUPPORTED		= 1 << 5, /**< Zone Append is supported (within Zoned Namespaces) */
+	SPDK_NVME_CTRLR_DIRECTIVES_SUPPORTED		= 1 << 6, /**< The Directives is supported */
 };
 
 /**
@@ -1910,6 +1911,62 @@ int spdk_nvme_ctrlr_security_receive(struct spdk_nvme_ctrlr *ctrlr, uint8_t secp
  */
 int spdk_nvme_ctrlr_security_send(struct spdk_nvme_ctrlr *ctrlr, uint8_t secp,
 				  uint16_t spsp, uint8_t nssf, void *payload, size_t size);
+
+/**
+ * Receive data related to a specific Directive Type from the controller.
+ *
+ * This function is thread safe and can be called at any point after spdk_nvme_probe().
+ *
+ * Call spdk_nvme_ctrlr_process_admin_completions() to poll for completion of
+ * commands submitted through this function.
+ *
+ * \param ctrlr NVMe controller to use for directive receive command submission.
+ * \param nsid Specific Namespace Identifier.
+ * \param doper Directive Operation defined in nvme_spec.h.
+ * \param dtype Directive Type defined in nvme_spec.h.
+ * \param dspec Directive Specific defined in nvme_spec.h.
+ * \param payload The pointer to the payload buffer.
+ * \param payload_size The size of payload buffer.
+ * \param cdw12 Command dword 12.
+ * \param cdw13 Command dword 13.
+ * \param cb_fn Callback function to invoke when the command has been completed.
+ * \param cb_arg Argument to pass to the callback function.
+ *
+ * \return 0 if successfully submitted, negated errno if resources could not be allocated
+ * for this request.
+ */
+int spdk_nvme_ctrlr_cmd_directive_receive(struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid,
+		uint32_t doper, uint32_t dtype, uint32_t dspec,
+		void *payload, uint32_t payload_size, uint32_t cdw12,
+		uint32_t cdw13, spdk_nvme_cmd_cb cb_fn, void *cb_arg);
+
+/**
+ * Send data related to a specific Directive Type to the controller.
+ *
+ * This function is thread safe and can be called at any point after spdk_nvme_probe().
+ *
+ * Call spdk_nvme_ctrlr_process_admin_completions() to poll for completion of
+ * commands submitted through this function.
+ *
+ * \param ctrlr NVMe controller to use for directive send command submission.
+ * \param nsid Specific Namespace Identifier.
+ * \param doper Directive Operation defined in nvme_spec.h.
+ * \param dtype Directive Type defined in nvme_spec.h.
+ * \param dspec Directive Specific defined in nvme_spec.h.
+ * \param payload The pointer to the payload buffer.
+ * \param payload_size The size of payload buffer.
+ * \param cdw12 Command dword 12.
+ * \param cdw13 Command dword 13.
+ * \param cb_fn Callback function to invoke when the command has been completed.
+ * \param cb_arg Argument to pass to the callback function.
+ *
+ * \return 0 if successfully submitted, negated errno if resources could not be allocated
+ * for this request.
+ */
+int spdk_nvme_ctrlr_cmd_directive_send(struct spdk_nvme_ctrlr *ctrlr, uint32_t nsid,
+				       uint32_t doper, uint32_t dtype, uint32_t dspec,
+				       void *payload, uint32_t payload_size, uint32_t cdw12,
+				       uint32_t cdw13, spdk_nvme_cmd_cb cb_fn, void *cb_arg);
 
 /**
  * Get supported flags of the controller.

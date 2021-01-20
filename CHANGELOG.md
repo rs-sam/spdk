@@ -15,6 +15,11 @@ examine process. Along with corresponding `bdev_wait_for_examine` RPC, which
 is now always called during `spdk_bdev_subsystem_config_json` making sure
 every bdev is ready to be used.
 
+A new API `spdk_bdev_io_get_aio_status` was added for getting the status of
+bdev_io as Linux AIO errno. Also `spdk_bdev_io_complete_aio_status` function
+and `SPDK_BDEV_IO_STATUS_AIO_ERROR` were added for bdev module to complete
+a bdev_io with Linux AIO errno.
+
 ### blob
 
 An `opts_size` element was added in the `spdk_bs_opts` structure to solve the
@@ -29,11 +34,21 @@ An `opts_size` element was added in the `spdk_blob_open_opts` structure to solve
 ABI compatiblity issue between different SPDK version. And also add `opts_size`
 parameter in `spdk_blob_open_opts_init` function.
 
+### dpdk
+
+Updated DPDK submodule to DPDK 20.11.
+
 ### nvme
+
+Directives support was added to the NVMe driver.
+
+Two async APIs 'spdk_nvme_ctrlr_cmd_directive_receive' and 'spdk_nvme_ctrlr_cmd_directive_send'
+are added for Directive Send and Directive Receive command, respectively.
 
 Added a new function `spdk_nvme_ctrlr_reset_subsystem` to perform a NVMe
 subsystem reset. Note: The NVMf target does not support the subsystem reset yet.
-
+Add a new function 'spdk_nvme_bytes_to_numd' to transfer bytes to number of
+dwords.
 ### event
 
 The pci_whitelist and pci_blacklist members of struct spdk_app_opts have been
