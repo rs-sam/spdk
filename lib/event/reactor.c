@@ -132,6 +132,19 @@ _spdk_scheduler_set(char *name)
 	return 0;
 }
 
+struct spdk_scheduler *
+_spdk_scheduler_get(void)
+{
+	return g_scheduler;
+}
+
+uint64_t
+_spdk_scheduler_period_get(void)
+{
+	/* Convert from ticks to microseconds */
+	return (g_scheduler_period * SPDK_SEC_TO_USEC / spdk_get_ticks_hz());
+}
+
 void
 _spdk_scheduler_period_set(uint64_t period)
 {
@@ -798,10 +811,8 @@ void
 spdk_reactors_start(void)
 {
 	struct spdk_reactor *reactor;
-	struct spdk_cpuset tmp_cpumask = {};
 	uint32_t i, current_core;
 	int rc;
-	char thread_name[32];
 
 	g_rusage_period = (CONTEXT_SWITCH_MONITOR_PERIOD * spdk_get_ticks_hz()) / SPDK_SEC_TO_USEC;
 	g_reactor_state = SPDK_REACTOR_STATE_RUNNING;
@@ -820,14 +831,6 @@ spdk_reactors_start(void)
 				assert(false);
 				return;
 			}
-
-			/* For now, for each reactor spawn one thread. */
-			snprintf(thread_name, sizeof(thread_name), "reactor_%u", reactor->lcore);
-
-			spdk_cpuset_zero(&tmp_cpumask);
-			spdk_cpuset_set_cpu(&tmp_cpumask, i, true);
-
-			spdk_thread_create(thread_name, &tmp_cpumask);
 		}
 		spdk_cpuset_set_cpu(&g_reactor_core_mask, i, true);
 	}
@@ -910,6 +913,7 @@ _reactor_schedule_thread(struct spdk_thread *thread)
 {
 	uint32_t core;
 	struct spdk_lw_thread *lw_thread;
+	struct spdk_thread_stats last_stats;
 	struct spdk_event *evt = NULL;
 	struct spdk_cpuset *cpumask;
 	uint32_t i;
@@ -919,7 +923,9 @@ _reactor_schedule_thread(struct spdk_thread *thread)
 	lw_thread = spdk_thread_get_ctx(thread);
 	assert(lw_thread != NULL);
 	core = lw_thread->lcore;
+	last_stats = lw_thread->last_stats;
 	memset(lw_thread, 0, sizeof(*lw_thread));
+	lw_thread->last_stats = last_stats;
 
 	pthread_mutex_lock(&g_scheduler_mtx);
 	if (core == SPDK_ENV_LCORE_ID_ANY) {
@@ -1245,6 +1251,12 @@ _spdk_governor_set(char *name)
 	}
 
 	return 0;
+}
+
+struct spdk_governor *
+_spdk_governor_get(void)
+{
+	return &g_governor;
 }
 
 void

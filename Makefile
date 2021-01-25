@@ -45,6 +45,7 @@ DIRS-$(CONFIG_EXAMPLES) += examples
 DIRS-y += test
 DIRS-$(CONFIG_IPSEC_MB) += ipsecbuild
 DIRS-$(CONFIG_ISAL) += isalbuild
+DIRS-$(CONFIG_VFIO_USER) += vfiouserbuild
 
 .PHONY: all clean $(DIRS-y) include/spdk/config.h mk/config.mk \
 	cc_version cxx_version .libs_only_other .ldflags ldflags install \
@@ -78,6 +79,11 @@ LIB += isalbuild
 DPDK_DEPS += isalbuild
 endif
 
+ifeq ($(CONFIG_VFIO_USER),y)
+VFIOUSERBUILD = vfiouserbuild
+LIB += vfiouserbuild
+endif
+
 all: mk/cc.mk $(DIRS-y)
 clean: $(DIRS-y)
 	$(Q)rm -f include/spdk/config.h
@@ -85,6 +91,7 @@ clean: $(DIRS-y)
 	$(Q)rm -rf build/fio
 	$(Q)rm -rf build/examples
 	$(Q)rm -rf build/include
+	$(Q)rm -rf build/lib/pkgconfig
 	$(Q)find build/lib ! -name .gitignore -type f -delete
 
 install: all
@@ -97,7 +104,7 @@ ifneq ($(SKIP_DPDK_BUILD),1)
 dpdkbuild: $(DPDK_DEPS)
 endif
 
-lib: $(DPDKBUILD)
+lib: $(DPDKBUILD) $(VFIOUSERBUILD)
 module: lib
 shared_lib: module
 app: $(LIB)
@@ -113,7 +120,7 @@ mk/cc.mk:
 	false
 
 build_dir: mk/cc.mk
-	$(Q)mkdir -p build/lib
+	$(Q)mkdir -p build/lib/pkgconfig
 	$(Q)mkdir -p build/bin
 	$(Q)mkdir -p build/fio
 	$(Q)mkdir -p build/examples

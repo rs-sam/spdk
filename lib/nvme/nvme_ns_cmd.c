@@ -62,6 +62,21 @@ nvme_ns_check_request_length(uint32_t lba_count, uint32_t sectors_per_max_io,
 	return child_per_io >= qdepth;
 }
 
+static inline uint32_t
+_nvme_get_host_buffer_sector_size(struct spdk_nvme_ns *ns, uint32_t io_flags)
+{
+	uint32_t sector_size = ns->extended_lba_size;
+
+	if ((io_flags & SPDK_NVME_IO_FLAGS_PRACT) &&
+	    (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED) &&
+	    (ns->flags & SPDK_NVME_NS_DPS_PI_SUPPORTED) &&
+	    (ns->md_size == 8)) {
+		sector_size -= 8;
+	}
+
+	return sector_size;
+}
+
 static struct nvme_request *
 _nvme_add_child_request(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 			const struct nvme_payload *payload,
@@ -95,19 +110,9 @@ _nvme_ns_cmd_split_request(struct spdk_nvme_ns *ns,
 			   uint32_t sectors_per_max_io, uint32_t sector_mask,
 			   uint16_t apptag_mask, uint16_t apptag)
 {
-	uint32_t		sector_size;
-	uint32_t		md_size = ns->md_size;
+	uint32_t		sector_size = _nvme_get_host_buffer_sector_size(ns, io_flags);
 	uint32_t		remaining_lba_count = lba_count;
 	struct nvme_request	*child;
-
-	sector_size = ns->extended_lba_size;
-
-	if ((io_flags & SPDK_NVME_IO_FLAGS_PRACT) &&
-	    (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED) &&
-	    (ns->flags & SPDK_NVME_NS_DPS_PI_SUPPORTED) &&
-	    (md_size == 8)) {
-		sector_size -= 8;
-	}
 
 	while (remaining_lba_count > 0) {
 		lba_count = sectors_per_max_io - (lba & sector_mask);
@@ -123,7 +128,7 @@ _nvme_ns_cmd_split_request(struct spdk_nvme_ns *ns,
 		remaining_lba_count -= lba_count;
 		lba += lba_count;
 		payload_offset += lba_count * sector_size;
-		md_offset += lba_count * md_size;
+		md_offset += lba_count * ns->md_size;
 	}
 
 	return req;
@@ -387,20 +392,9 @@ _nvme_ns_cmd_rw(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 		uint32_t io_flags, uint16_t apptag_mask, uint16_t apptag, bool check_sgl)
 {
 	struct nvme_request	*req;
-	uint32_t		sector_size;
-	uint32_t		sectors_per_max_io;
-	uint32_t		sectors_per_stripe;
-
-	sector_size = ns->extended_lba_size;
-	sectors_per_max_io = ns->sectors_per_max_io;
-	sectors_per_stripe = ns->sectors_per_stripe;
-
-	if ((io_flags & SPDK_NVME_IO_FLAGS_PRACT) &&
-	    (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED) &&
-	    (ns->flags & SPDK_NVME_NS_DPS_PI_SUPPORTED) &&
-	    (ns->md_size == 8)) {
-		sector_size -= 8;
-	}
+	uint32_t		sector_size = _nvme_get_host_buffer_sector_size(ns, io_flags);
+	uint32_t		sectors_per_max_io = ns->sectors_per_max_io;
+	uint32_t		sectors_per_stripe = ns->sectors_per_stripe;
 
 	req = nvme_allocate_request(qpair, payload, lba_count * sector_size, lba_count * ns->md_size,
 				    cb_fn, cb_arg);
@@ -410,6 +404,13 @@ _nvme_ns_cmd_rw(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 
 	req->payload_offset = payload_offset;
 	req->md_offset = md_offset;
+
+	/* Zone append commands cannot be split. */
+	if (opc == SPDK_NVME_OPC_ZONE_APPEND) {
+		assert(ns->csi == SPDK_NVME_CSI_ZNS);
+		_nvme_ns_cmd_setup_request(ns, req, opc, lba, lba_count, io_flags, apptag_mask, apptag);
+		return req;
+	}
 
 	/*
 	 * Intel DC P3*00 NVMe controllers benefit from driver-assisted striping.
@@ -463,7 +464,7 @@ spdk_nvme_ns_cmd_compare(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg,
 			      SPDK_NVME_OPC_COMPARE,
 			      io_flags, 0,
-			      0, true);
+			      0, false);
 	if (req != NULL) {
 		return nvme_qpair_submit_request(qpair, req);
 	} else if (nvme_ns_check_request_length(lba_count,
@@ -496,7 +497,7 @@ spdk_nvme_ns_cmd_compare_with_md(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair
 	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg,
 			      SPDK_NVME_OPC_COMPARE,
 			      io_flags,
-			      apptag_mask, apptag, true);
+			      apptag_mask, apptag, false);
 	if (req != NULL) {
 		return nvme_qpair_submit_request(qpair, req);
 	} else if (nvme_ns_check_request_length(lba_count,
@@ -596,7 +597,7 @@ spdk_nvme_ns_cmd_read(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair, vo
 
 	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_READ,
 			      io_flags, 0,
-			      0, true);
+			      0, false);
 	if (req != NULL) {
 		return nvme_qpair_submit_request(qpair, req);
 	} else if (nvme_ns_check_request_length(lba_count,
@@ -627,7 +628,7 @@ spdk_nvme_ns_cmd_read_with_md(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *q
 
 	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_READ,
 			      io_flags,
-			      apptag_mask, apptag, true);
+			      apptag_mask, apptag, false);
 	if (req != NULL) {
 		return nvme_qpair_submit_request(qpair, req);
 	} else if (nvme_ns_check_request_length(lba_count,
@@ -725,7 +726,63 @@ spdk_nvme_ns_cmd_write(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 	payload = NVME_PAYLOAD_CONTIG(buffer, NULL);
 
 	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_WRITE,
-			      io_flags, 0, 0, true);
+			      io_flags, 0, 0, false);
+	if (req != NULL) {
+		return nvme_qpair_submit_request(qpair, req);
+	} else if (nvme_ns_check_request_length(lba_count,
+						ns->sectors_per_max_io,
+						ns->sectors_per_stripe,
+						qpair->ctrlr->opts.io_queue_requests)) {
+		return -EINVAL;
+	} else {
+		return -ENOMEM;
+	}
+}
+
+static int
+nvme_ns_cmd_check_zone_append(struct spdk_nvme_ns *ns, uint32_t lba_count, uint32_t io_flags)
+{
+	uint32_t sector_size;
+
+	/* Not all NVMe Zoned Namespaces support the zone append command. */
+	if (!(ns->ctrlr->flags & SPDK_NVME_CTRLR_ZONE_APPEND_SUPPORTED)) {
+		return -EINVAL;
+	}
+
+	sector_size =  _nvme_get_host_buffer_sector_size(ns, io_flags);
+
+	/* Fail a too large zone append command early. */
+	if (lba_count * sector_size > ns->ctrlr->max_zone_append_size) {
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int
+nvme_ns_cmd_zone_append_with_md(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
+				void *buffer, void *metadata, uint64_t zslba,
+				uint32_t lba_count, spdk_nvme_cmd_cb cb_fn, void *cb_arg,
+				uint32_t io_flags, uint16_t apptag_mask, uint16_t apptag)
+{
+	struct nvme_request *req;
+	struct nvme_payload payload;
+	int ret;
+
+	if (!_is_io_flags_valid(io_flags)) {
+		return -EINVAL;
+	}
+
+	ret = nvme_ns_cmd_check_zone_append(ns, lba_count, io_flags);
+	if (ret) {
+		return ret;
+	}
+
+	payload = NVME_PAYLOAD_CONTIG(buffer, metadata);
+
+	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, zslba, lba_count, cb_fn, cb_arg,
+			      SPDK_NVME_OPC_ZONE_APPEND,
+			      io_flags, apptag_mask, apptag, false);
 	if (req != NULL) {
 		return nvme_qpair_submit_request(qpair, req);
 	} else if (nvme_ns_check_request_length(lba_count,
@@ -754,7 +811,7 @@ spdk_nvme_ns_cmd_write_with_md(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *
 	payload = NVME_PAYLOAD_CONTIG(buffer, metadata);
 
 	req = _nvme_ns_cmd_rw(ns, qpair, &payload, 0, 0, lba, lba_count, cb_fn, cb_arg, SPDK_NVME_OPC_WRITE,
-			      io_flags, apptag_mask, apptag, true);
+			      io_flags, apptag_mask, apptag, false);
 	if (req != NULL) {
 		return nvme_qpair_submit_request(qpair, req);
 	} else if (nvme_ns_check_request_length(lba_count,

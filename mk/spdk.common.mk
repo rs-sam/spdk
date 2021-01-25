@@ -110,6 +110,11 @@ COMMON_CFLAGS += -fprofile-use=$(SPDK_ROOT_DIR)/build/pgo
 LDFLAGS += -fprofile-use=$(SPDK_ROOT_DIR)/build/pgo
 endif
 
+ifeq ($(CONFIG_CET),y)
+COMMON_CFLAGS += -fcf-protection
+LDFLAGS += -fcf-protection
+endif
+
 COMMON_CFLAGS += -Wformat -Wformat-security
 
 COMMON_CFLAGS += -D_GNU_SOURCE
@@ -176,6 +181,21 @@ ISAL_DIR=$(SPDK_ROOT_DIR)/isa-l
 ifeq ($(CONFIG_ISAL), y)
 SYS_LIBS += -L$(ISAL_DIR)/.libs -lisal
 COMMON_CFLAGS += -I$(ISAL_DIR)/..
+endif
+
+VFIO_USER_DIR=$(SPDK_ROOT_DIR)/libvfio-user
+ifeq ($(CONFIG_VFIO_USER), y)
+ifeq ($(CONFIG_DEBUG), y)
+VFIO_USER_BUILD_TYPE=dbg
+else
+VFIO_USER_BUILD_TYPE=release
+endif
+VFIO_USER_INSTALL_DIR=$(VFIO_USER_DIR)/build
+VFIO_USER_INCLUDE_DIR=$(VFIO_USER_INSTALL_DIR)/usr/local/include
+VFIO_USER_LIBRARY_DIR=$(VFIO_USER_DIR)/build/$(VFIO_USER_BUILD_TYPE)/lib
+CFLAGS += -I$(VFIO_USER_INCLUDE_DIR)
+LDFLAGS += -L$(VFIO_USER_LIBRARY_DIR)
+SYS_LIBS += -Wl,-Bstatic -lvfio-user -Wl,-Bdynamic -ljson-c
 endif
 
 #Attach only if FreeBSD and RDMA is specified with configure
@@ -424,3 +444,7 @@ define add_whole_archive
 $(1:%=-Wl,-wholearchive:%)
 endef
 endif
+
+define pkgconfig_filename
+$(SPDK_ROOT_DIR)/build/lib/pkgconfig/$(1).pc
+endef

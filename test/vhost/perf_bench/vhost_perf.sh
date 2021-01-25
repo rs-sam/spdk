@@ -394,11 +394,26 @@ for vm_num in $used_vms; do
 		vm_check_scsi_location $vm_num
 	fi
 
+	block=$(printf '%s' $SCSI_DISK)
+	vm_exec "$vm_num" "echo none > /sys/class/block/$block/queue/scheduler"
+
 	if [[ -n "$vm_throttle" ]]; then
-		block=$(printf '%s' $SCSI_DISK)
+		# Check whether cgroups or cgroupsv2 is used on guest system
+		# Simple, naive & quick approach as it should do the trick for simple
+		# VMs used for performance tests
+		c_gr_ver=2
+		if vm_exec "$vm_num" "grep '^cgroup ' /proc/mounts"; then
+			c_gr_ver=1
+		fi
 		major_minor=$(vm_exec "$vm_num" "cat /sys/block/$block/dev")
-		vm_exec "$vm_num" "echo \"$major_minor $vm_throttle\" > /sys/fs/cgroup/blkio/blkio.throttle.read_iops_device"
-		vm_exec "$vm_num" "echo \"$major_minor $vm_throttle\" > /sys/fs/cgroup/blkio/blkio.throttle.write_iops_device"
+
+		if [[ $c_gr_ver == 1 ]]; then
+			vm_exec "$vm_num" "echo \"$major_minor $vm_throttle\" > /sys/fs/cgroup/blkio/blkio.throttle.read_iops_device"
+			vm_exec "$vm_num" "echo \"$major_minor $vm_throttle\" > /sys/fs/cgroup/blkio/blkio.throttle.write_iops_device"
+		elif [[ $c_gr_ver == 2 ]]; then
+			vm_exec "$vm_num" "echo '+io' > /sys/fs/cgroup/cgroup.subtree_control"
+			vm_exec "$vm_num" "echo \"$major_minor riops=$vm_throttle wiops=$vm_throttle\" > /sys/fs/cgroup/user.slice/io.max"
+		fi
 	fi
 
 	fio_disks+=" --vm=${vm_num}$(printf ':/dev/%s' $SCSI_DISK)"

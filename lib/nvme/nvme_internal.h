@@ -150,6 +150,12 @@ extern pid_t g_spdk_nvme_pid;
  */
 #define NVME_QUIRK_OACS_SECURITY 0x2000
 
+/**
+ * Intel P55XX SSDs can't support Dataset Management command with SGL format,
+ * so use PRP with DSM command.
+ */
+#define NVME_QUIRK_NO_SGL_FOR_DSM 0x4000
+
 #define NVME_MAX_ASYNC_EVENTS	(8)
 
 #define NVME_MAX_ADMIN_TIMEOUT_IN_SECS	(30)
@@ -1038,6 +1044,10 @@ int	nvme_ns_construct(struct spdk_nvme_ns *ns, uint32_t id,
 			  struct spdk_nvme_ctrlr *ctrlr);
 void	nvme_ns_destruct(struct spdk_nvme_ns *ns);
 int	nvme_ns_update(struct spdk_nvme_ns *ns);
+int	nvme_ns_cmd_zone_append_with_md(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
+					void *buffer, void *metadata, uint64_t zslba,
+					uint32_t lba_count, spdk_nvme_cmd_cb cb_fn, void *cb_arg,
+					uint32_t io_flags, uint16_t apptag_mask, uint16_t apptag);
 
 int	nvme_fabric_ctrlr_set_reg_4(struct spdk_nvme_ctrlr *ctrlr, uint32_t offset, uint32_t value);
 int	nvme_fabric_ctrlr_set_reg_8(struct spdk_nvme_ctrlr *ctrlr, uint32_t offset, uint64_t value);

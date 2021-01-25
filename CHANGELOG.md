@@ -5,7 +5,7 @@
 ### bdev
 
 An `opts_size` element was added in the `spdk_bdev_opts` structure to solve the
-ABI compatiblity issue between different SPDK version. And also add `opts_size`
+ABI compatibility issue between different SPDK version. And also add `opts_size`
 parameter in spdk_bdev_get_opts function. Two fields `small_buf_pool_size` and
 `large_buf_pool_size` were added into spdk_bdev_opts, which were used to determine
 the small and large buffer pool size of the whole bdev module.
@@ -20,64 +20,111 @@ bdev_io as Linux AIO errno. Also `spdk_bdev_io_complete_aio_status` function
 and `SPDK_BDEV_IO_STATUS_AIO_ERROR` were added for bdev module to complete
 a bdev_io with Linux AIO errno.
 
+A new API `spdk_bdev_get_module_name` was added for getting block device module name.
+Also `spdk_bdev_get_module_ctx` was added to obtain a bdev module context for
+the block device opened by the specified descriptor.
+
+Added `max_segment_size` and `max_num_segments` to `spdk_bdev` structure for
+bdev modules to specify splitting requirements.
+
 ### blob
 
 An `opts_size` element was added in the `spdk_bs_opts` structure to solve the
-ABI compatiblity issue between different SPDK version. And also add `opts_size`
+ABI compatibility issue between different SPDK version. And also add `opts_size`
 parameter in `spdk_bs_opts_init` function.
 
 An `opts_size` element was added in the `spdk_blob_opts` structure to solve the
-ABI compatiblity issue between different SPDK version. And also add `opts_size`
+ABI compatibility issue between different SPDK version. And also add `opts_size`
 parameter in `spdk_blob_opts_init` function.
 
 An `opts_size` element was added in the `spdk_blob_open_opts` structure to solve the
-ABI compatiblity issue between different SPDK version. And also add `opts_size`
+ABI compatibility issue between different SPDK version. And also add `opts_size`
 parameter in `spdk_blob_open_opts_init` function.
+
+### build
+
+SPDK now generates pkg-config files to simplify the process of determining which
+libraries must be linked into an SPDK application.
 
 ### dpdk
 
 Updated DPDK submodule to DPDK 20.11.
 
-### nvme
-
-Directives support was added to the NVMe driver.
-
-Two async APIs 'spdk_nvme_ctrlr_cmd_directive_receive' and 'spdk_nvme_ctrlr_cmd_directive_send'
-are added for Directive Send and Directive Receive command, respectively.
-
-Added a new function `spdk_nvme_ctrlr_reset_subsystem` to perform a NVMe
-subsystem reset. Note: The NVMf target does not support the subsystem reset yet.
-Add a new function 'spdk_nvme_bytes_to_numd' to transfer bytes to number of
-dwords.
-### event
-
-The pci_whitelist and pci_blacklist members of struct spdk_app_opts have been
-deprecated.  The new members are named pci_allowed and pci_blocked respectively.
-
-The --pci-blacklist command line option has been deprecated, replaced with
---pci-blocked.
-
-The --pci-whitelist/-W command line options have been deprecated, replaced with
---pci-allowed/-A.
+Removed `--with-igb-uio-driver` configure option. Since DPDK 20.11 igb_uio driver
+was moved to separate dpdk-kmods repository. If required, users need to refer to
+dpdk-kmods repository to build the driver.
 
 ### env
 
-The pci_whitelist, pci_blacklist and master_core members of struct spdk_env_opts
-have been deprecated.  The new members are named pci_allowed, pci_blocked and
-main_core respectively.
+The `pci_whitelist`, `pci_blacklist` and `master_core` members of struct `spdk_env_opts`
+have been deprecated.  The new members are named `pci_allowed`, `pci_blocked` and
+`main_core` respectively.
 
-An `opts_size`element was added in the `spdk_app_opts` structure
-to solve the ABI compatiblity issue between different SPDK version. An `opts_size`
+An `opts_size` element was added in the `spdk_app_opts` structure
+to solve the ABI compatibility issue between different SPDK version. An `opts_size`
 parameter is added into `spdk_app_opts_init` function.
+
+### event
+
+The `pci_whitelist` and `pci_blacklist` members of struct `spdk_app_opts` have been
+deprecated.  The new members are named `pci_allowed` and `pci_blocked` respectively.
+
+The `--pci-blacklist` command line option has been deprecated, replaced with
+`--pci-blocked`.
+
+The `--pci-whitelist/-W` command line options have been deprecated, replaced with
+`--pci-allowed/-A`.
+
+## ioat
+
+The PCI BDF whitelist option has been removed from the `ioat_scan_accel_engine` RPC.
+IOAT PCI functions can still be allowed or denied using SPDK application command
+line options.
+
+### isa-l
+
+Updated ISA-L submodule to v2.30.0.
+
+### json
+
+A new API `spdk_jsonrpc_send_bool_response` was added to allow sending response for
+writing json bool results into one function.
+Update API `bdev_nvme_set_options` and add a `keep_alive_timeout_ms` parameter. Now you
+can specify the `keep_alive_timeout` before creating NVMe bdev.
 
 ### nbd
 
 Change the return type of function `spdk_nbd_stop` from void to int. And update the
 `spdk_nbd_fini` with two parameters to make its behavior from sync to async.
 
+### nvme
+
+Directives support was added to the NVMe driver.
+
+Two async APIs `spdk_nvme_ctrlr_cmd_directive_receive` and `spdk_nvme_ctrlr_cmd_directive_send`
+are added for Directive Send and Directive Receive command, respectively.
+
+Added a new function `spdk_nvme_ctrlr_reset_subsystem` to perform a NVMe
+subsystem reset. Note: The NVMe-oF target does not support the subsystem reset yet.
+
+Add a new function `spdk_nvme_bytes_to_numd` to transfer bytes to number of
+dwords.
+
+Added a new custom transport `SPDK_NVME_TRANSPORT_VFIOUSER` to enable NVMe
+driver running with NVMe over vfio-user target.
+
+Added the vfio-user custom transport implementation in NVMe driver which can connect
+to NVMe over vfio-user target via vfio-user transport.
+
+Added a new function `spdk_nvme_ctrlr_set_remove_cb` to remove or override
+`remove_cb` and `remove_ctx` specified when the controller was probed.
+
+Added support for ZNS zone append command with new API `spdk_nvme_zns_zone_append` and
+`spdk_nvme_zns_zone_append_with_md`.
+
 ### nvmf
 
-nvmf_fc_lld_fini() now takes callback and hence updating FC Broadcom LLD driver
+`nvmf_fc_lld_fini` now takes callback and hence updating FC Broadcom LLD driver
 to the latest is required.
 
 FC transport supported primary tagging and VMID.
@@ -87,22 +134,25 @@ Broadcom FC LLD driver and SPDK NVMe-oF FC transport consolidated one LLD API,
 Hence updating Broadcom FC LLD driver to the latest is required.
 
 The functions `destroy` and `qpair_fini` in the transport interface now accept a
-cb_fn and cb_arg to call upon completion, and their execution can be asynchronous.
+`cb_fn` and `cb_arg` to call upon completion, and their execution can be asynchronous.
 
-The SPDK nvmf target now supports async event notification for discovery log changes.
+The SPDK NVMe-oF target now supports async event notification for discovery log changes.
 This allows the initiator to create persistent connection to discovery controller and
 be notified of any discovery log changes.
 
-An `opts_size`element was added in the `spdk_nvmf_transport_opts` structure
+An `opts_size` element was added in the `spdk_nvmf_transport_opts` structure
 to solve the ABI compatiblity issue between different SPDK version. And also add
-`opts_size` parameter in spdk_nvmf_transport_opts_init function.
+`opts_size` parameter in `spdk_nvmf_transport_opts_init` function.
 
-### json
+Added a new custom vfio-user transport implementation in NVMe-oF which can provide
+emulated NVMe devices to QEMU and SPDK NVMe driver.
 
-A new API `spdk_jsonrpc_send_bool_response` was added to allow sending response for
-writing json bool results into one function.
-Update API `bdev_nvme_set_options` and add a keep_alive_timeout_ms parameter. Now you
-can specify the keep_alive_timeout before creating NVMe bdev.
+Added new API `spdk_nvmf_tgt_listen_ext` that uses `spdk_nvmf_listen_opts` to allow
+passing generic options to specific transport. This functionality replaces one provided
+with `nvmf_subsystem_set_options`. Also removed `nvmf_subsystem_set_options` RPC
+that allowed transport specific options within subsystem.
+
+The `trsvcid` in `nvmf_subsystem_add_listener` RPC is now optional.
 
 ### rpc
 
@@ -115,11 +165,10 @@ target application restarts.
 Two optional parameter `--small-buf-pool-size` and `--large-buf-pool-size` were added
 into `bdev_set_options` function.
 
-## ioat
+### vhost
 
-The PCI BDF whitelist option has been removed from the ioat_scan_accel_engine RPC.
-ioat PCI functions can still be allowed or denied using SPDK application command
-line options.
+Added optional `packed_ring_recovery` parameter to `vhost_create_blk_controller` RPC
+enabling packed ring live recovery.
 
 ## v20.10:
 

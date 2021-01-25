@@ -1070,7 +1070,6 @@ nvme_tcp_icresp_handle(struct nvme_tcp_qpair *tqpair,
 	return;
 end:
 	nvme_tcp_qpair_send_h2c_term_req(tqpair, pdu, fes, error_offset);
-	return;
 }
 
 static void
@@ -1109,7 +1108,6 @@ nvme_tcp_capsule_resp_hdr_handle(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_
 
 end:
 	nvme_tcp_qpair_send_h2c_term_req(tqpair, pdu, fes, error_offset);
-	return;
 }
 
 static void
@@ -1134,7 +1132,6 @@ nvme_tcp_c2h_term_req_hdr_handle(struct nvme_tcp_qpair *tqpair,
 	return;
 end:
 	nvme_tcp_qpair_send_h2c_term_req(tqpair, pdu, fes, error_offset);
-	return;
 }
 
 static void
@@ -1193,7 +1190,6 @@ nvme_tcp_c2h_data_hdr_handle(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_pdu 
 
 end:
 	nvme_tcp_qpair_send_h2c_term_req(tqpair, pdu, fes, error_offset);
-	return;
 }
 
 static void
@@ -1361,7 +1357,6 @@ nvme_tcp_r2t_hdr_handle(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_pdu *pdu)
 
 end:
 	nvme_tcp_qpair_send_h2c_term_req(tqpair, pdu, fes, error_offset);
-	return;
 
 }
 
@@ -1496,13 +1491,13 @@ nvme_tcp_read_pdu(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 				break;
 			}
 
-			pdu->readv_offset += rc;
-			if (pdu->readv_offset < data_len) {
+			pdu->rw_offset += rc;
+			if (pdu->rw_offset < data_len) {
 				rc =  NVME_TCP_PDU_IN_PROGRESS;
 				goto out;
 			}
 
-			assert(pdu->readv_offset == data_len);
+			assert(pdu->rw_offset == data_len);
 			/* All of this PDU has now been read from the socket. */
 			nvme_tcp_pdu_payload_handle(tqpair, reaped);
 			break;

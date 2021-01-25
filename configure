@@ -32,6 +32,7 @@ function usage()
 	echo " --enable-lto              Enable link-time optimization"
 	echo " --enable-pgo-capture      Enable generation of profile guided optimization data"
 	echo " --enable-pgo-use          Use previously captured profile guided optimization data"
+	echo " --enable-cet              Enable Intel Control-flow Enforcement Technology (CET)"
 	echo " --disable-tests           Disable building of functional tests"
 	echo " --disable-unit-tests      Disable building of unit tests"
 	echo " --disable-examples        Disable building of examples"
@@ -48,10 +49,6 @@ function usage()
 	echo "                           example: /usr/share/dpdk/x86_64-default-linuxapp-gcc"
 	echo " env                       Use an alternate environment implementation instead of DPDK."
 	echo "                           Implies --without-dpdk."
-	echo " igb-uio-driver            Build DPDK's igb-uio driver."
-	echo "                           Required on some systems to use qat devices. This flag is"
-	echo "                           effective only with the default dpdk submodule."
-	echo "                           No path required"
 	echo " idxd                      Build the IDXD library and accel framework plug-in module."
 	echo "                           Disabled while experimental. Only built for x86 when enabled."
 	echo " crypto                    Build vbdev crypto module."
@@ -61,6 +58,8 @@ function usage()
 	echo " vhost                     Build vhost target. Enabled by default."
 	echo "                           No path required."
 	echo " virtio                    Build vhost initiator and virtio-pci bdev modules."
+	echo "                           No path required."
+	echo " vfio-user                 Build custom vfio-user transport for NVMf target and NVMe initiator."
 	echo "                           No path required."
 	echo " pmdk                      Build persistent memory bdev."
 	echo "                           example: /usr/share/pmdk"
@@ -269,6 +268,12 @@ for i in "$@"; do
 		--disable-werror)
 			CONFIG[WERROR]=n
 			;;
+		--enable-cet)
+			CONFIG[CET]=y
+			;;
+		--disable-cet)
+			CONFIG[CET]=n
+			;;
 		--with-dpdk=*)
 			check_dir "$i"
 			CONFIG[DPDK_DIR]=$(readlink -f ${i#*=})
@@ -338,6 +343,12 @@ for i in "$@"; do
 		--without-virtio)
 			CONFIG[VIRTIO]=n
 			;;
+		--with-vfio-user)
+			CONFIG[VFIO_USER]=y
+			;;
+		--without-vfio-user)
+			CONFIG[VFIO_USER]=n
+			;;
 		--with-pmdk)
 			CONFIG[PMDK]=y
 			CONFIG[PMDK_DIR]=""
@@ -375,12 +386,6 @@ for i in "$@"; do
 		--without-vtune)
 			CONFIG[VTUNE_DIR]=
 			CONFIG[VTUNE]=n
-			;;
-		--with-igb-uio-driver)
-			CONFIG[IGB_UIO_DRIVER]=y
-			;;
-		--without-igb-uio-driver)
-			CONFIG[IGB_UIO_DRIVER]=n
 			;;
 		--with-ocf)
 			CONFIG[OCF]=y
@@ -452,6 +457,39 @@ else
 	BUILD_CMD=($CC -o /dev/null -x c $CPPFLAGS $CFLAGS $LDFLAGS)
 fi
 BUILD_CMD+=(-I/usr/local/include -L/usr/local/lib)
+
+function set_os_id_version() {
+	if [[ -f /etc/os-release ]]; then
+		source /etc/os-release
+	fi
+
+	OSID=$ID
+	OSVERSION=$VERSION_ID
+
+	echo "OS-ID: $OSID | OS-Version: $OSVERSION"
+}
+
+if [[ "${CONFIG[VFIO_USER]}" = "y" ]]; then
+	set_os_id_version
+
+	if [[ $arch != x86_64* ]] || [[ $sys_name == "FreeBSD" ]]; then
+		echo "Non x86_64 and Linux platform, disable CONFIG_VFIO_USER"
+		CONFIG[VFIO_USER]="n"
+	# disable tests on ubuntu16 due to lack of macro definition in pci_regs.h
+	elif [[ $OSID == "ubuntu" ]] && [[ $OSVERSION == "16.04" ]]; then
+		echo "ubuntu16 OS, disable CONFIG_VFIO_USER"
+		CONFIG[VFIO_USER]="n"
+	elif ! hash cmake; then
+		echo "cmake not installed, disable CONFIG_VFIO_USER"
+		CONFIG[VFIO_USER]="n"
+	elif [[ ! -d /usr/include/json-c ]] && [[ ! -d /usr/local/include/json-c ]]; then
+		echo "json-c-devel not installed, disable CONFIG_VFIO_USER"
+		CONFIG[VFIO_USER]="n"
+	elif [[ ! -e /usr/include/cmocka.h ]] && [[ ! -e /usr/local/include/cmocka.h ]]; then
+		echo "libcmocka-devel not installed, disable CONFIG_VFIO_USER"
+		CONFIG[VFIO_USER]="n"
+	fi
+fi
 
 # IDXD uses Intel specific instructions.
 if [[ "${CONFIG[IDXD]}" = "y" ]]; then
@@ -765,6 +803,14 @@ if [[ "${CONFIG[FUSE]}" = "y" ]]; then
 	if [[ ! -d /usr/include/fuse3 ]] && [[ ! -d /usr/local/include/fuse3 ]]; then
 		echo "--with-fuse requires libfuse3."
 		echo "Please install then re-run this script."
+		exit 1
+	fi
+fi
+
+if [ "${CONFIG[CET]}" = "y" ]; then
+	if ! echo -e 'int main(void) { return 0; }\n' | ${BUILD_CMD[@]} -fcf-protection - 2>/dev/null; then
+		echo --enable-cet requires compiler/linker that supports CET.
+		echo Please install then re-run this script.
 		exit 1
 	fi
 fi

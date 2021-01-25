@@ -40,9 +40,6 @@ DPDK_OPTS = -Denable_docs=false
 DPDK_CFLAGS =
 
 DPDK_KMODS = false
-ifeq ($(CONFIG_IGB_UIO_DRIVER),y)
-DPDK_KMODS = true
-endif
 ifeq ($(OS),FreeBSD)
 DPDK_KMODS = true
 endif
@@ -96,6 +93,11 @@ ifeq ($(CONFIG_WERROR),y)
 DPDK_CFLAGS += -Werror
 else
 DPDK_CFLAGS += -Wno-error
+endif
+
+ifeq ($(CONFIG_CET),y)
+DPDK_CFLAGS += -fcf-protection
+DPDK_LDFLAGS += -fcf-protection
 endif
 
 ifdef EXTRA_DPDK_CFLAGS

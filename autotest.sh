@@ -160,7 +160,7 @@ if [[ $SPDK_TEST_CRYPTO -eq 1 || $SPDK_TEST_REDUCE -eq 1 ]]; then
 	# up under that node too and memory needs to be available there for the tests.
 	CLEAR_HUGE=yes HUGE_EVEN_ALLOC=yes ./scripts/setup.sh
 	./scripts/setup.sh status
-	if grep -q '#define SPDK_CONFIG_IGB_UIO_DRIVER 1' $rootdir/include/spdk/config.h; then
+	if [[ $SPDK_TEST_USE_IGB_UIO -eq 1 ]]; then
 		./scripts/qat_setup.sh igb_uio
 	else
 		./scripts/qat_setup.sh
@@ -190,6 +190,7 @@ if [ $SPDK_RUN_FUNCTIONAL_TEST -eq 1 ]; then
 	run_test "spdkcli_tcp" test/spdkcli/tcp.sh
 	run_test "dpdk_mem_utility" test/dpdk_memory_utility/test_dpdk_mem_info.sh
 	run_test "event" test/event/event.sh
+	run_test "accel_engine" test/accel_engine/accel_engine.sh
 
 	if [ $SPDK_TEST_BLOCKDEV -eq 1 ]; then
 		run_test "blockdev_general" test/bdev/blockdev.sh
@@ -252,6 +253,7 @@ if [ $SPDK_RUN_FUNCTIONAL_TEST -eq 1 ]; then
 			run_test "nvmf_tcp" ./test/nvmf/nvmf.sh --transport=$SPDK_TEST_NVMF_TRANSPORT
 			run_test "spdkcli_nvmf_tcp" ./test/spdkcli/nvmf.sh
 			run_test "nvmf_identify_passthru" test/nvmf/target/identify_passthru.sh --transport=$SPDK_TEST_NVMF_TRANSPORT
+			run_test "nvmf_dif" test/nvmf/target/dif.sh
 		elif [ "$SPDK_TEST_NVMF_TRANSPORT" = "fc" ]; then
 			run_test "nvmf_fc" ./test/nvmf/nvmf.sh --transport=$SPDK_TEST_NVMF_TRANSPORT
 			run_test "spdkcli_nvmf_fc" ./test/spdkcli/nvmf.sh
@@ -317,6 +319,10 @@ if [ $SPDK_RUN_FUNCTIONAL_TEST -eq 1 ]; then
 		if [[ $(lspci -d:37c8) ]]; then
 			run_test "blockdev_crypto_qat" ./test/bdev/blockdev.sh "crypto_qat"
 		fi
+	fi
+
+	if [[ $SPDK_TEST_SCHEDULER -eq 1 ]]; then
+		run_test "scheduler" ./test/scheduler/scheduler.sh
 	fi
 fi
 
