@@ -261,6 +261,29 @@ static bool g_mix_specified;
 static bool g_exit;
 /* Default to 10 seconds for the keep alive value. This value is arbitrary. */
 static uint32_t g_keep_alive_timeout_in_ms = 10000;
+static uint32_t g_quiet_count = 1;
+
+/* When user specifies -Q, some error messages are rate limited.  When rate
+ * limited, we only print the error message every g_quiet_count times the
+ * error occurs.
+ *
+ * Note: the __count is not thread safe, meaning the rate limiting will not
+ * be exact when running perf with multiple thread with lots of errors.
+ * Thread-local __count would mean rate-limiting per thread which doesn't
+ * seem as useful.
+ */
+#define RATELIMIT_LOG(...) \
+	{								\
+		static uint64_t __count = 0;				\
+		if ((__count % g_quiet_count) == 0) {			\
+			if (__count > 0 && g_quiet_count > 1) {		\
+				fprintf(stderr, "Message suppressed %" PRIu32 " times: ",	\
+					g_quiet_count - 1);		\
+			}						\
+			fprintf(stderr, __VA_ARGS__);			\
+		}							\
+		__count++;						\
+	}
 
 static const char *g_core_mask;
 
@@ -1260,7 +1283,7 @@ submit_single_io(struct perf_task *task)
 	rc = entry->fn_table->submit_io(task, ns_ctx, entry, offset_in_ios);
 
 	if (spdk_unlikely(rc != 0)) {
-		fprintf(stderr, "starting I/O failed\n");
+		RATELIMIT_LOG("starting I/O failed\n");
 	} else {
 		ns_ctx->current_queue_depth++;
 	}
@@ -1316,9 +1339,18 @@ io_complete(void *ctx, const struct spdk_nvme_cpl *cpl)
 	struct perf_task *task = ctx;
 
 	if (spdk_unlikely(spdk_nvme_cpl_is_error(cpl))) {
-		fprintf(stderr, "%s completed with error (sct=%d, sc=%d)\n",
-			task->is_read ? "Read" : "Write",
-			cpl->status.sct, cpl->status.sc);
+		if (task->is_read) {
+			RATELIMIT_LOG("Read completed with error (sct=%d, sc=%d)\n",
+				      cpl->status.sct, cpl->status.sc);
+		} else {
+			RATELIMIT_LOG("Write completed with error (sct=%d, sc=%d)\n",
+				      cpl->status.sct, cpl->status.sc);
+		}
+		if (cpl->status.sct == SPDK_NVME_SCT_GENERIC &&
+		    cpl->status.sc == SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT) {
+			/* The namespace was hotplugged.  Stop trying to send I/O to it. */
+			task->ns_ctx->is_draining = true;
+		}
 	}
 
 	task_complete(task);
@@ -1532,9 +1564,11 @@ static void usage(char *program_name)
 	printf("\t  traddr      Transport address (e.g. 0000:04:00.0 for PCIe or 192.168.100.8 for RDMA)\n");
 	printf("\t  trsvcid     Transport service identifier (e.g. 4420)\n");
 	printf("\t  subnqn      Subsystem NQN (default: %s)\n", SPDK_NVMF_DISCOVERY_NQN);
+	printf("\t  ns          NVMe namespace ID (all active namespaces are used by default)\n");
 	printf("\t  hostnqn     Host NQN\n");
 	printf("\t Example: -r 'trtype:PCIe traddr:0000:04:00.0' for PCIe or\n");
 	printf("\t          -r 'trtype:RDMA adrfam:IPv4 traddr:192.168.100.8 trsvcid:4420' for NVMeoF\n");
+	printf("\t Note: can be specified multiple times to test multiple disks/targets.\n");
 	printf("\t[-e metadata configuration]\n");
 	printf("\t Keys:\n");
 	printf("\t  PRACT      Protection Information Action bit (PRACT=1 or PRACT=0)\n");
@@ -1547,6 +1581,7 @@ static void usage(char *program_name)
 	printf("\t[-C max completions per poll]\n");
 	printf("\t\t(default: 0 - unlimited)\n");
 	printf("\t[-i shared memory group ID]\n");
+	printf("\t[-Q log I/O errors every N times (default: 1)\n");
 	printf("\t");
 	spdk_log_usage(stdout, "-T");
 	printf("\t[-V enable VMD enumeration]\n");
@@ -1986,7 +2021,8 @@ parse_args(int argc, char **argv)
 	long int val;
 	int rc;
 
-	while ((op = getopt(argc, argv, "a:b:c:e:gi:lo:q:r:k:s:t:w:z:A:C:DGHILM:NO:P:RS:T:U:VZ:")) != -1) {
+	while ((op = getopt(argc, argv,
+			    "a:b:c:e:gi:lo:q:r:k:s:t:w:z:A:C:DGHILM:NO:P:Q:RS:T:U:VZ:")) != -1) {
 		switch (op) {
 		case 'a':
 		case 'A':
@@ -2000,6 +2036,7 @@ parse_args(int argc, char **argv)
 		case 's':
 		case 't':
 		case 'M':
+		case 'Q':
 		case 'U':
 			val = spdk_strtol(optarg, 10);
 			if (val < 0) {
@@ -2040,6 +2077,9 @@ parse_args(int argc, char **argv)
 			case 'M':
 				g_rw_percentage = val;
 				g_mix_specified = true;
+				break;
+			case 'Q':
+				g_quiet_count = val;
 				break;
 			case 'U':
 				g_nr_unused_io_queues = val;
@@ -2180,6 +2220,11 @@ parse_args(int argc, char **argv)
 	}
 	if (!g_time_in_sec) {
 		fprintf(stderr, "missing -t (test time in seconds) operand\n");
+		usage(argv[0]);
+		return 1;
+	}
+	if (!g_quiet_count) {
+		fprintf(stderr, "-Q value must be greater than 0\n");
 		usage(argv[0]);
 		return 1;
 	}
@@ -2565,6 +2610,11 @@ int main(int argc, char **argv)
 	if (g_num_namespaces == 0) {
 		fprintf(stderr, "No valid NVMe controllers or AIO or URING devices found\n");
 		goto cleanup;
+	}
+
+	if (g_num_workers > 1 && g_quiet_count > 1) {
+		fprintf(stderr, "Error message rate-limiting enabled across multiple threads.\n");
+		fprintf(stderr, "Error suppression count may not be exact.\n");
 	}
 
 	rc = pthread_create(&thread_id, NULL, &nvme_poll_ctrlrs, NULL);

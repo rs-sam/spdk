@@ -4,17 +4,19 @@ import os
 import re
 import sys
 import json
-import paramiko
 import zipfile
 import threading
 import subprocess
 import itertools
 import time
 import uuid
+from collections import OrderedDict
+
+import paramiko
+import pandas as pd
+
 import rpc
 import rpc.client
-import pandas as pd
-from collections import OrderedDict
 from common import *
 
 
@@ -645,11 +647,11 @@ class SPDKTarget(Target):
         rpc.client.print_dict(rpc.nvmf.nvmf_get_transports(self.client))
 
         if self.null_block:
-            nvme_section = self.spdk_tgt_add_nullblock(self.null_block)
-            subsystems_section = self.spdk_tgt_add_subsystem_conf(self.nic_ips, self.null_block)
+            self.spdk_tgt_add_nullblock(self.null_block)
+            self.spdk_tgt_add_subsystem_conf(self.nic_ips, self.null_block)
         else:
-            nvme_section = self.spdk_tgt_add_nvme_conf()
-            subsystems_section = self.spdk_tgt_add_subsystem_conf(self.nic_ips)
+            self.spdk_tgt_add_nvme_conf()
+            self.spdk_tgt_add_subsystem_conf(self.nic_ips)
         self.log_print("Done configuring SPDK NVMeOF Target")
 
     def spdk_tgt_add_nullblock(self, null_block_count):
@@ -770,7 +772,7 @@ class KernelInitiator(Initiator):
                                               cpu_frequency=cpu_frequency, fio_bin=fio_bin)
 
         self.extra_params = ""
-        if kwargs["extra_params"]:
+        if "extra_params" in kwargs.keys():
             self.extra_params = kwargs["extra_params"]
 
     def __del__(self):

@@ -132,6 +132,10 @@ struct spdk_nvmf_subsystem_pg_ns_info {
 	/* Host ID for the registrants with the namespace */
 	struct spdk_uuid		reg_hostid[SPDK_NVMF_MAX_NUM_REGISTRANTS];
 	uint64_t			num_blocks;
+
+	/* I/O outstanding to this namespace */
+	uint64_t			io_outstanding;
+	enum spdk_nvmf_subsystem_state	state;
 };
 
 typedef void(*spdk_nvmf_poll_group_mod_done)(void *cb_arg, int status);
@@ -141,7 +145,8 @@ struct spdk_nvmf_subsystem_poll_group {
 	struct spdk_nvmf_subsystem_pg_ns_info	*ns_info;
 	uint32_t				num_ns;
 
-	uint64_t				io_outstanding;
+	/* Number of ADMIN and FABRICS requests outstanding */
+	uint64_t				mgmt_io_outstanding;
 	spdk_nvmf_poll_group_mod_done		cb_fn;
 	void					*cb_arg;
 
@@ -236,6 +241,7 @@ struct spdk_nvmf_ctrlr {
 	uint8_t nr_aer_reqs;
 	struct spdk_uuid  hostid;
 
+	uint32_t association_timeout; /* in milliseconds */
 	uint16_t changed_ns_list_count;
 	struct spdk_nvme_ns_list changed_ns_list;
 	uint64_t log_page_count;
@@ -250,6 +256,7 @@ struct spdk_nvmf_ctrlr {
 
 	bool				dif_insert_or_strip;
 	bool				in_destruct;
+	bool				disconnect_in_progress;
 
 	TAILQ_ENTRY(spdk_nvmf_ctrlr)	link;
 };
@@ -307,7 +314,9 @@ int nvmf_poll_group_add_subsystem(struct spdk_nvmf_poll_group *group,
 void nvmf_poll_group_remove_subsystem(struct spdk_nvmf_poll_group *group,
 				      struct spdk_nvmf_subsystem *subsystem, spdk_nvmf_poll_group_mod_done cb_fn, void *cb_arg);
 void nvmf_poll_group_pause_subsystem(struct spdk_nvmf_poll_group *group,
-				     struct spdk_nvmf_subsystem *subsystem, spdk_nvmf_poll_group_mod_done cb_fn, void *cb_arg);
+				     struct spdk_nvmf_subsystem *subsystem,
+				     uint32_t nsid,
+				     spdk_nvmf_poll_group_mod_done cb_fn, void *cb_arg);
 void nvmf_poll_group_resume_subsystem(struct spdk_nvmf_poll_group *group,
 				      struct spdk_nvmf_subsystem *subsystem, spdk_nvmf_poll_group_mod_done cb_fn, void *cb_arg);
 

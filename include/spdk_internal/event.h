@@ -71,6 +71,13 @@ struct spdk_lw_thread {
 	struct spdk_thread_stats	last_stats;
 };
 
+/**
+ * Completion callback to set reactor into interrupt mode or poll mode.
+ *
+ * \param cb_arg Argument to pass to the callback function.
+ */
+typedef void (*spdk_reactor_set_interrupt_mode_cb)(void *cb_arg);
+
 struct spdk_reactor {
 	/* Lightweight threads running on this reactor */
 	TAILQ_HEAD(, spdk_lw_thread)			threads;
@@ -97,7 +104,15 @@ struct spdk_reactor {
 	uint64_t					busy_tsc;
 	uint64_t					idle_tsc;
 
-	bool						interrupt_mode;
+	/* Each bit of cpuset indicates whether a reactor probably requires event notification */
+	struct spdk_cpuset				notify_cpuset;
+	/* Indicate whether this reactor currently runs in interrupt */
+	bool						in_interrupt;
+	bool						set_interrupt_mode_in_progress;
+	bool						new_in_interrupt;
+	spdk_reactor_set_interrupt_mode_cb		set_interrupt_mode_cb_fn;
+	void						*set_interrupt_mode_cb_arg;
+
 	struct spdk_fd_group				*fgrp;
 	int						resched_fd;
 } __attribute__((aligned(SPDK_CACHE_LINE_SIZE)));
@@ -109,6 +124,8 @@ void spdk_reactors_start(void);
 void spdk_reactors_stop(void *arg1);
 
 struct spdk_reactor *spdk_reactor_get(uint32_t lcore);
+
+struct spdk_reactor *_spdk_get_scheduling_reactor(void);
 
 /**
  * Allocate and pass an event to each reactor, serially.
@@ -123,6 +140,29 @@ struct spdk_reactor *spdk_reactor_get(uint32_t lcore);
  * called on each reactor.
  */
 void spdk_for_each_reactor(spdk_event_fn fn, void *arg1, void *arg2, spdk_event_fn cpl);
+
+/**
+ * Set reactor into interrupt mode or back to poll mode.
+ *
+ * Currently, this function is only permitted within spdk application thread.
+ * Also it requires the corresponding reactor does not have any spdk_thread.
+ *
+ * \param lcore CPU core index of specified reactor.
+ * \param new_in_interrupt Set interrupt mode for true, or poll mode for false.
+ * \param cb_fn This will be called on spdk application thread after setting interupt mode.
+ * \param cb_arg Argument will be passed to cb_fn when called.
+ *
+ * \return 0 on success, negtive errno on failure.
+ */
+int spdk_reactor_set_interrupt_mode(uint32_t lcore, bool new_in_interrupt,
+				    spdk_reactor_set_interrupt_mode_cb cb_fn, void *cb_arg);
+
+/**
+ * Get a handle to spdk application thread.
+ *
+ * \return a pointer to spdk application thread on success or NULL on failure.
+ */
+struct spdk_thread *_spdk_get_app_thread(void);
 
 struct spdk_subsystem {
 	const char *name;
@@ -277,6 +317,7 @@ struct spdk_scheduler_core_info {
 	uint32_t lcore;
 	uint32_t threads_count;
 	uint32_t pending_threads_count;
+	bool interrupt_mode;
 	struct spdk_lw_thread **threads;
 };
 
@@ -338,6 +379,11 @@ struct spdk_scheduler *_spdk_scheduler_get(void);
  * \param period New period (microseconds).
  */
 void _spdk_scheduler_period_set(uint64_t period);
+
+/**
+ * Disable the scheduler.
+ */
+void _spdk_scheduler_disable(void);
 
 /**
  * Get period of currently set scheduler.

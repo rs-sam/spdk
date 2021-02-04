@@ -48,6 +48,21 @@ uint64_t g_last_main_core_busy, g_last_main_core_idle;
 #define SCHEDULER_THREAD_BUSY 100
 #define SCHEDULER_LOAD_LIMIT 50
 
+static uint32_t
+_get_next_target_core(void)
+{
+	uint32_t target_lcore;
+
+	if (g_next_lcore == SPDK_ENV_LCORE_ID_ANY) {
+		g_next_lcore = spdk_env_get_first_core();
+	}
+
+	target_lcore = g_next_lcore;
+	g_next_lcore = spdk_env_get_next_core(g_next_lcore);
+
+	return target_lcore;
+}
+
 static uint8_t
 _get_thread_load(struct spdk_lw_thread *lw_thread)
 {
@@ -109,6 +124,7 @@ static void
 balance(struct spdk_scheduler_core_info *cores_info, int cores_count,
 	struct spdk_governor *governor)
 {
+	struct spdk_reactor *reactor;
 	struct spdk_lw_thread *lw_thread;
 	struct spdk_thread *thread;
 	struct spdk_scheduler_core_info *core;
@@ -159,12 +175,7 @@ balance(struct spdk_scheduler_core_info *cores_info, int cores_count,
 			if (i == g_main_lcore && load >= SCHEDULER_LOAD_LIMIT) {
 				/* This thread is active and on the main core, we need to pick a core to move it to */
 				for (k = 0; k < spdk_env_get_core_count(); k++) {
-					if (g_next_lcore == SPDK_ENV_LCORE_ID_ANY) {
-						g_next_lcore = spdk_env_get_first_core();
-					}
-
-					target_lcore = g_next_lcore;
-					g_next_lcore = spdk_env_get_next_core(g_next_lcore);
+					target_lcore = _get_next_target_core();
 
 					/* Do not use main core if it is too busy for new thread */
 					if (target_lcore == g_main_lcore && thread_busy > main_core_idle) {
@@ -194,11 +205,42 @@ balance(struct spdk_scheduler_core_info *cores_info, int cores_count,
 				main_core_busy += spdk_min(UINT64_MAX - main_core_busy, thread_busy);
 				main_core_idle -= spdk_min(main_core_idle, thread_busy);
 			} else {
-				/* This thread should remain on the same core */
+				/* Move busy thread only if cpumask does not match current core (except main core) */
 				if (i != g_main_lcore) {
+					if (!spdk_cpuset_get_cpu(cpumask, i)) {
+						for (k = 0; k < spdk_env_get_core_count(); k++) {
+							target_lcore = _get_next_target_core();
+
+							if (spdk_cpuset_get_cpu(cpumask, target_lcore)) {
+								lw_thread->new_lcore = target_lcore;
+								cores_info[target_lcore].pending_threads_count++;
+								core->pending_threads_count--;
+
+								if (target_lcore == g_main_lcore) {
+									main_core_busy += spdk_min(UINT64_MAX - main_core_busy, thread_busy);
+									main_core_idle -= spdk_min(main_core_idle, thread_busy);
+								}
+								break;
+							}
+						}
+					}
+
 					busy_threads_present = true;
 				}
 			}
+		}
+	}
+
+	/* Switch unused cores to interrupt mode and switch cores to polled mode
+	 * if they will be used after rebalancing */
+	SPDK_ENV_FOREACH_CORE(i) {
+		reactor = spdk_reactor_get(i);
+		core = &cores_info[i];
+		/* We can switch mode only if reactor already does not have any threads */
+		if (core->pending_threads_count == 0 && TAILQ_EMPTY(&reactor->threads)) {
+			core->interrupt_mode = true;
+		} else if (core->pending_threads_count != 0) {
+			core->interrupt_mode = false;
 		}
 	}
 

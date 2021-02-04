@@ -1,6 +1,14 @@
 # Changelog
 
-## v21.01: (Upcoming Release)
+## v21.04: (Upcoming Release)
+
+### nvme
+
+Added `spdk_nvme_qpair_get_optimal_poll_group` function and `qpair_get_optimal_poll_group`
+function pointer in spdk_nvmf_transport_ops structure in order to add the qpair to the most
+suitable polling group.
+
+## v21.01:
 
 ### bdev
 
@@ -74,6 +82,10 @@ The `--pci-blacklist` command line option has been deprecated, replaced with
 
 The `--pci-whitelist/-W` command line options have been deprecated, replaced with
 `--pci-allowed/-A`.
+
+Added new experimental `dynamic` scheduler that rebalances idle threads, adjusts CPU frequency
+using dpdk_governor and turns idle reactor cores to interrupt mode. Please see
+[scheduler documentation](https://www.spdk.io/doc/scheduler.html) for details.
 
 ## ioat
 
@@ -153,6 +165,13 @@ with `nvmf_subsystem_set_options`. Also removed `nvmf_subsystem_set_options` RPC
 that allowed transport specific options within subsystem.
 
 The `trsvcid` in `nvmf_subsystem_add_listener` RPC is now optional.
+
+Pausing a subsystem now only pauses all admin queues. This allows for the
+management of hosts and listeners, plus the addition of namespaces without a
+full subsystem pause. Additionally, the target now allows for pausing
+individual namespaces within a subsystem. To remove a namespace from a
+subsystem, only the specific namespace must be paused. I/O will continue to
+other namespaces while these operations execute.
 
 ### rpc
 

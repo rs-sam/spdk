@@ -1472,6 +1472,7 @@ refresh_tab(enum tabs tab, uint8_t current_page)
 	for (i = 0; i < NUMBER_OF_TABS; i++) {
 		wrefresh(g_tab_win[i]);
 	}
+	draw_menu_win();
 
 	return max_pages;
 }
@@ -2004,7 +2005,6 @@ display_thread(struct rpc_thread_info *thread_info)
 		c = wgetch(thread_win);
 
 		switch (c) {
-		case 10: /* ENTER */
 		case 27: /* ESC */
 			stop_loop = true;
 			break;
@@ -2167,7 +2167,7 @@ show_poller(uint8_t current_page)
 {
 	PANEL *poller_panel;
 	WINDOW *poller_win;
-	uint64_t poller_counter = 0, count = 0;
+	uint64_t count = 0;
 	uint64_t poller_number = current_page * g_max_data_rows + g_selected_row;
 	struct rpc_poller_info *pollers[RPC_MAX_POLLERS];
 	bool stop_loop = false;
@@ -2179,7 +2179,7 @@ show_poller(uint8_t current_page)
 	prepare_poller_data(current_page, pollers, &count, current_page);
 
 	poller_win = newwin(POLLER_WIN_HEIGHT, POLLER_WIN_WIDTH,
-			    (g_max_row - poller_counter) / 2, (g_max_col - POLLER_WIN_HOR_POS) / 2);
+			    (g_max_row) / 2, (g_max_col - POLLER_WIN_HOR_POS) / 2);
 
 	keypad(poller_win, TRUE);
 	poller_panel = new_panel(poller_win);
@@ -2229,7 +2229,6 @@ show_poller(uint8_t current_page)
 	while (!stop_loop) {
 		c = wgetch(poller_win);
 		switch (c) {
-		case 10: /* ENTER */
 		case 27: /* ESC */
 			stop_loop = true;
 			break;
