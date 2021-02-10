@@ -226,8 +226,8 @@ performance_dump_job(struct bdevperf_aggregate_stats *stats, struct bdevperf_job
 {
 	double io_per_second, mb_per_second, failed_per_second, timeout_per_second;
 
-	printf("\r Thread name: %s\n", spdk_thread_get_name(job->thread));
-	printf("\t Core Mask: 0x%s\n", spdk_cpuset_fmt(spdk_thread_get_cpumask(job->thread)));
+	printf("\r Job: %s (Core Mask 0x%s)\n", spdk_thread_get_name(job->thread),
+	       spdk_cpuset_fmt(spdk_thread_get_cpumask(job->thread)));
 	if (job->verify) {
 		printf("\t Verification LBA range: start 0x%" PRIx64 " length 0x%" PRIx64 "\n",
 		       job->ios_base, job->size_in_ios);
@@ -410,11 +410,11 @@ bdevperf_test_done(void *ctx)
 		free(job);
 	}
 
-	printf("\r =====================================================\n");
-	printf("\r %-20s: %10.2f IOPS %10.2f MiB/s\n",
+	printf("\r =============================================================\n");
+	printf("\r %-28s: %10.2f IOPS %10.2f MiB/s\n",
 	       "Total", g_stats.total_io_per_second, g_stats.total_mb_per_second);
 	if (g_stats.total_failed_per_second != 0 || g_stats.total_timeout_per_second != 0) {
-		printf("\r %-20s: %10.2f Fail/s %8.2f TO/s\n",
+		printf("\r %-28s: %10.2f Fail/s %8.2f TO/s\n",
 		       "", g_stats.total_failed_per_second, g_stats.total_timeout_per_second);
 	}
 	fflush(stdout);
@@ -1118,7 +1118,6 @@ typedef struct spdk_thread *spdk_thread_t;
 static spdk_thread_t
 construct_job_thread(struct spdk_cpuset *cpumask, const char *tag)
 {
-	char thread_name[32];
 	struct spdk_cpuset tmp;
 
 	/* This function runs on the main thread. */
@@ -1136,11 +1135,7 @@ construct_job_thread(struct spdk_cpuset *cpumask, const char *tag)
 		fprintf(stderr, "cpumask for '%s' is too big\n", tag);
 	}
 
-	snprintf(thread_name, sizeof(thread_name), "%s_%s",
-		 tag,
-		 spdk_cpuset_fmt(cpumask));
-
-	return spdk_thread_create(thread_name, cpumask);
+	return spdk_thread_create(tag, cpumask);
 }
 
 static uint32_t
@@ -1999,7 +1994,7 @@ bdevperf_usage(void)
 	printf(" -z                        start bdevperf, but wait for RPC to start tests\n");
 	printf(" -X                        abort timed out I/O\n");
 	printf(" -C                        enable every core to send I/Os to each bdev\n");
-	printf(" -j                        use job config file\n");
+	printf(" -j <filename>             use job config file\n");
 }
 
 static int

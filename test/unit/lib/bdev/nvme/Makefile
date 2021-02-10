@@ -31,15 +31,14 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../..)
+SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../../../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-SO_VER := 3
-SO_MINOR := 0
+DIRS-y = bdev_ocssd.c
 
-C_SRCS = bdev_virtio_scsi.c bdev_virtio_blk.c bdev_virtio_rpc.c
-LIBNAME = bdev_virtio
+.PHONY: all clean $(DIRS-y)
 
-SPDK_MAP_FILE = $(SPDK_ROOT_DIR)/mk/spdk_blank.map
+all: $(DIRS-y)
+clean: $(DIRS-y)
 
-include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk

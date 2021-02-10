@@ -2,13 +2,39 @@
 
 ## v21.04: (Upcoming Release)
 
+### env
+
+Added spdk_pci_device_allow API to allow applications to add PCI addresses to
+the allowed list after the application has started.
+
 ### nvme
 
 Added `spdk_nvme_qpair_get_optimal_poll_group` function and `qpair_get_optimal_poll_group`
 function pointer in spdk_nvmf_transport_ops structure in order to add the qpair to the most
 suitable polling group.
 
+Added spdk_nvme_set_hotplug_filter API to allow applications to choose which
+hot-inserted SSDs should be probed. This is useful for use cases where multiple
+independent SPDK processes are running on one node.  The filter function can
+then be implemented in these processes to decide which SSDs to probe based on
+the new SSD's PCI address.
+
 ## v21.01:
+
+### idxd
+
+A new API `spdk_idxd_get_rebalance` was added so that users of the library
+can know whether they need to rebalance the flow control for the channel
+that was just added/removed.  This is based on how the low level library
+shares devices amongst channels.
+
+The API `spdk_idxd_reconfigure_chan` had the `num_channels` removed as this
+is now tracked in the library.  The app makes use the new API above to
+determine whether to rebalance or not. This applies to `spdk_idxd_configure_chan`
+as well.
+
+The API `spdk_idxd_put_channel` now returns the rebalance state for the
+underlying device.
 
 ### bdev
 

@@ -726,7 +726,7 @@ _sock_check_zcopy(struct spdk_sock *sock)
 
 			/* If we reaped buffer reclaim notification and sock is not in pending_recv list yet,
 			 * add it now. It allows to call socket callback and process completions */
-			if (found && !psock->pending_recv) {
+			if (found && !psock->pending_recv && group) {
 				psock->pending_recv = true;
 				TAILQ_INSERT_TAIL(&group->pending_recv, psock, link);
 			}
@@ -844,9 +844,17 @@ _sock_flush(struct spdk_sock *sock)
 }
 
 static int
-posix_sock_flush(struct spdk_sock *_sock)
+posix_sock_flush(struct spdk_sock *sock)
 {
-	return _sock_flush(_sock);
+#ifdef SPDK_ZEROCOPY
+	struct spdk_posix_sock *psock = __posix_sock(sock);
+
+	if (psock->zcopy && !TAILQ_EMPTY(&sock->pending_reqs)) {
+		_sock_check_zcopy(sock);
+	}
+#endif
+
+	return _sock_flush(sock);
 }
 
 static ssize_t
