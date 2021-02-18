@@ -645,10 +645,10 @@ _set_thread_name(const char *thread_name)
 {
 #if defined(__linux__)
 	prctl(PR_SET_NAME, thread_name, 0, 0, 0);
-#elif defined(__FreeBSD__) || defined(_WIN32)
+#elif defined(__FreeBSD__)
 	pthread_set_name_np(pthread_self(), thread_name);
 #else
-#error missing platform support for thread name
+	pthread_setname_np(pthread_self(), thread_name);
 #endif
 }
 
