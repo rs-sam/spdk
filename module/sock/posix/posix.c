@@ -33,13 +33,16 @@
 
 #include "spdk/stdinc.h"
 
-#if defined(__linux__)
-#include <sys/epoll.h>
-#include <linux/errqueue.h>
-#elif defined(__FreeBSD__)
+#if defined(__FreeBSD__)
 #include <sys/event.h>
-#elif defined(_WIN32)
+#define SPDK_KEVENT
+#else
 #include <sys/epoll.h>
+#define SPDK_EPOLL
+#endif
+
+#if defined(__linux__)
+#include <linux/errqueue.h>
 #endif
 
 #include "spdk/log.h"
@@ -1110,9 +1113,9 @@ posix_sock_group_impl_create(void)
 	struct spdk_posix_sock_group_impl *group_impl;
 	int fd;
 
-#if defined(__linux__) || defined(_WIN32)
+#if defined(SPDK_EPOLL)
 	fd = epoll_create1(0);
-#elif defined(__FreeBSD__)
+#elif defined(SPDK_KEVENT)
 	fd = kqueue();
 #endif
 	if (fd == -1) {
@@ -1139,7 +1142,7 @@ posix_sock_group_impl_add_sock(struct spdk_sock_group_impl *_group, struct spdk_
 	struct spdk_posix_sock *sock = __posix_sock(_sock);
 	int rc;
 
-#if defined(__linux__) || defined(_WIN32)
+#if defined(SPDK_EPOLL)
 	struct epoll_event event;
 
 	memset(&event, 0, sizeof(event));
@@ -1148,7 +1151,7 @@ posix_sock_group_impl_add_sock(struct spdk_sock_group_impl *_group, struct spdk_
 	event.data.ptr = sock;
 
 	rc = epoll_ctl(group->fd, EPOLL_CTL_ADD, sock->fd, &event);
-#elif defined(__FreeBSD__)
+#elif defined(SPDK_KEVENT)
 	struct kevent event;
 	struct timespec ts = {0};
 
@@ -1183,12 +1186,12 @@ posix_sock_group_impl_remove_sock(struct spdk_sock_group_impl *_group, struct sp
 		assert(sock->pending_recv == false);
 	}
 
-#if defined(__linux__) || defined(_WIN32)
+#if defined(SPDK_EPOLL)
 	struct epoll_event event;
 
 	/* Event parameter is ignored but some old kernel version still require it. */
 	rc = epoll_ctl(group->fd, EPOLL_CTL_DEL, sock->fd, &event);
-#elif defined(__FreeBSD__)
+#elif defined(SPDK_KEVENT)
 	struct kevent event;
 	struct timespec ts = {0};
 
@@ -1214,9 +1217,9 @@ posix_sock_group_impl_poll(struct spdk_sock_group_impl *_group, int max_events,
 	struct spdk_sock *sock, *tmp;
 	int num_events, i, rc;
 	struct spdk_posix_sock *psock, *ptmp;
-#if defined(__linux__) || defined(_WIN32)
+#if defined(SPDK_EPOLL)
 	struct epoll_event events[MAX_EVENTS_PER_POLL];
-#elif defined(__FreeBSD__)
+#elif defined(SPDK_KEVENT)
 	struct kevent events[MAX_EVENTS_PER_POLL];
 	struct timespec ts = {0};
 #endif
@@ -1231,9 +1234,9 @@ posix_sock_group_impl_poll(struct spdk_sock_group_impl *_group, int max_events,
 		}
 	}
 
-#if defined(__linux__) || defined(_WIN32)
+#if defined(SPDK_EPOLL)
 	num_events = epoll_wait(group->fd, events, max_events, 0);
-#elif defined(__FreeBSD__)
+#elif defined(SPDK_KEVENT)
 	num_events = kevent(group->fd, NULL, 0, events, max_events, &ts);
 #endif
 
@@ -1253,7 +1256,7 @@ posix_sock_group_impl_poll(struct spdk_sock_group_impl *_group, int max_events,
 	}
 
 	for (i = 0; i < num_events; i++) {
-#if defined(__linux__) || defined(_WIN32)
+#if defined(SPDK_EPOLL)
 		sock = events[i].data.ptr;
 		psock = __posix_sock(sock);
 
@@ -1272,7 +1275,7 @@ posix_sock_group_impl_poll(struct spdk_sock_group_impl *_group, int max_events,
 			continue;
 		}
 
-#elif defined(__FreeBSD__)
+#elif defined(SPDK_KEVENT)
 		sock = events[i].udata;
 		psock = __posix_sock(sock);
 #endif
