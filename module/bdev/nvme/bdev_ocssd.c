@@ -127,21 +127,10 @@ ocssd_bdev_config_json(struct spdk_json_write_ctx *w, struct nvme_bdev *nvme_bde
 {
 	struct nvme_bdev_ns *nvme_ns;
 	struct nvme_bdev_ctrlr *nvme_bdev_ctrlr;
-	struct ocssd_bdev *ocssd_bdev;
-	char range_buf[128];
-	int rc;
 
 	nvme_ns = nvme_bdev_to_bdev_ns(nvme_bdev);
 	assert(nvme_ns != NULL);
 	nvme_bdev_ctrlr = nvme_ns->ctrlr;
-	ocssd_bdev = SPDK_CONTAINEROF(nvme_bdev, struct ocssd_bdev, nvme_bdev);
-
-	rc = snprintf(range_buf, sizeof(range_buf), "%"PRIu64"-%"PRIu64,
-		      ocssd_bdev->range.begin, ocssd_bdev->range.end);
-	if (rc < 0 || rc >= (int)sizeof(range_buf)) {
-		SPDK_ERRLOG("Failed to convert parallel unit range\n");
-		return;
-	}
 
 	spdk_json_write_object_begin(w);
 	spdk_json_write_named_string(w, "method", "bdev_ocssd_create");
@@ -150,7 +139,6 @@ ocssd_bdev_config_json(struct spdk_json_write_ctx *w, struct nvme_bdev *nvme_bde
 	spdk_json_write_named_string(w, "ctrlr_name", nvme_bdev_ctrlr->name);
 	spdk_json_write_named_string(w, "bdev_name", nvme_bdev->disk.name);
 	spdk_json_write_named_uint32(w, "nsid", nvme_ns->id);
-	spdk_json_write_named_string(w, "range", range_buf);
 	spdk_json_write_object_end(w);
 
 	spdk_json_write_object_end(w);
@@ -250,24 +238,11 @@ bdev_ocssd_destruct(void *ctx)
 	return 0;
 }
 
-static inline uint64_t
-ocssd_range_num_parallel_units(const struct bdev_ocssd_range *range)
-{
-	return range->end - range->begin + 1;
-}
-
-static uint64_t
-bdev_ocssd_num_parallel_units(const struct ocssd_bdev *ocssd_bdev)
-{
-	return ocssd_range_num_parallel_units(&ocssd_bdev->range);
-}
-
 static void
-bdev_ocssd_translate_lba(const struct bdev_ocssd_range *range,
-			 const struct spdk_ocssd_geometry_data *geo, uint64_t lba,
+bdev_ocssd_translate_lba(const struct spdk_ocssd_geometry_data *geo, uint64_t lba,
 			 uint64_t *grp, uint64_t *pu, uint64_t *chk, uint64_t *lbk)
 {
-	uint64_t addr_shift, punit;
+	uint64_t addr_shift, num_punits, punit;
 
 	/* To achieve best performance, we need to make sure that adjacent zones can be accessed
 	 * in parallel.  We accomplish this by having the following addressing scheme:
@@ -278,14 +253,15 @@ bdev_ocssd_translate_lba(const struct bdev_ocssd_range *range,
 	 * which means that neighbouring zones are placed in a different group and parallel unit.
 	 */
 	addr_shift = geo->clba;
+	num_punits = geo->num_grp * geo->num_pu;
 	*lbk = lba % addr_shift;
 
-	punit = range->begin + (lba / addr_shift) % ocssd_range_num_parallel_units(range);
+	punit = (lba / addr_shift) % num_punits;
 
 	*pu = punit % geo->num_pu;
 	*grp = punit / geo->num_pu;
 
-	addr_shift *= ocssd_range_num_parallel_units(range);
+	addr_shift *= num_punits;
 
 	*chk = (lba / addr_shift) % geo->num_chk;
 }
@@ -304,33 +280,28 @@ bdev_ocssd_to_parallel_unit(const struct spdk_ocssd_geometry_data *geometry,
 }
 
 static uint64_t
-bdev_ocssd_from_disk_lba(struct ocssd_bdev *ocssd_bdev,
-			 struct bdev_ocssd_ns *ocssd_ns, uint64_t lba)
+bdev_ocssd_from_disk_lba(struct bdev_ocssd_ns *ocssd_ns, uint64_t lba)
 {
 	const struct spdk_ocssd_geometry_data *geometry = &ocssd_ns->geometry;
 	const struct bdev_ocssd_lba_offsets *offsets = &ocssd_ns->lba_offsets;
-	const struct bdev_ocssd_range *range = &ocssd_bdev->range;
 	uint64_t lbk, chk, punit;
 
 	lbk = (lba >> offsets->lbk) & ((1 << geometry->lbaf.lbk_len) - 1);
 	chk = (lba >> offsets->chk) & ((1 << geometry->lbaf.chk_len) - 1);
 
 	punit = bdev_ocssd_to_parallel_unit(geometry, offsets, lba);
-	punit -= range->begin;
 
 	return lbk + punit * geometry->clba + chk * geometry->clba *
-	       ocssd_range_num_parallel_units(range);
+	       (geometry->num_grp * geometry->num_pu);
 }
 
 static uint64_t
-bdev_ocssd_to_disk_lba(struct ocssd_bdev *ocssd_bdev,
-		       struct bdev_ocssd_ns *ocssd_ns, uint64_t lba)
+bdev_ocssd_to_disk_lba(struct bdev_ocssd_ns *ocssd_ns, uint64_t lba)
 {
 	const struct bdev_ocssd_lba_offsets *offsets = &ocssd_ns->lba_offsets;
 	uint64_t lbk, chk, pu, grp;
 
-	bdev_ocssd_translate_lba(&ocssd_bdev->range, &ocssd_ns->geometry, lba,
-				 &grp, &pu, &chk, &lbk);
+	bdev_ocssd_translate_lba(&ocssd_ns->geometry, lba, &grp, &pu, &chk, &lbk);
 
 	return (lbk << offsets->lbk) |
 	       (chk << offsets->chk) |
@@ -339,13 +310,12 @@ bdev_ocssd_to_disk_lba(struct ocssd_bdev *ocssd_bdev,
 }
 
 static uint64_t
-bdev_ocssd_to_chunk_info_offset(struct ocssd_bdev *ocssd_bdev,
-				struct bdev_ocssd_ns *ocssd_ns, uint64_t lba)
+bdev_ocssd_to_chunk_info_offset(struct bdev_ocssd_ns *ocssd_ns, uint64_t lba)
 {
 	const struct spdk_ocssd_geometry_data *geo = &ocssd_ns->geometry;
 	uint64_t grp, pu, chk, lbk;
 
-	bdev_ocssd_translate_lba(&ocssd_bdev->range, geo, lba, &grp, &pu, &chk, &lbk);
+	bdev_ocssd_translate_lba(geo, lba, &grp, &pu, &chk, &lbk);
 
 	return grp * geo->num_pu * geo->num_chk + pu * geo->num_chk + chk;
 }
@@ -437,7 +407,7 @@ bdev_ocssd_read(struct ocssd_bdev *ocssd_bdev, struct nvme_bdev_ns *nvme_ns,
 	ocdev_io->io.iovpos = 0;
 	ocdev_io->io.iov_offset = 0;
 
-	lba = bdev_ocssd_to_disk_lba(ocssd_bdev, ocssd_ns, lba);
+	lba = bdev_ocssd_to_disk_lba(ocssd_ns, lba);
 
 	return spdk_nvme_ns_cmd_readv_with_md(nvme_ns->ns, qpair, lba,
 					      lba_count, bdev_ocssd_read_cb,
@@ -486,7 +456,7 @@ bdev_ocssd_write(struct ocssd_bdev *ocssd_bdev, struct nvme_bdev_ns *nvme_ns,
 	ocdev_io->io.iovpos = 0;
 	ocdev_io->io.iov_offset = 0;
 
-	lba = bdev_ocssd_to_disk_lba(ocssd_bdev, ocssd_ns, lba);
+	lba = bdev_ocssd_to_disk_lba(ocssd_ns, lba);
 
 	rc = spdk_nvme_ns_cmd_writev_with_md(nvme_ns->ns, qpair, lba,
 					     lba_count, bdev_ocssd_write_cb,
@@ -506,6 +476,7 @@ bdev_ocssd_append_cb(void *ctx, const struct spdk_nvme_cpl *cpl)
 	struct bdev_ocssd_zone *zone = ocdev_io->io.zone;
 	struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(ctx);
 
+	bdev_io->u.bdev.offset_blocks = zone->write_pointer;
 	zone->write_pointer += bdev_io->u.bdev.num_blocks;
 	assert(zone->write_pointer <= zone->slba + zone->capacity);
 
@@ -545,7 +516,7 @@ bdev_ocssd_zone_append(struct ocssd_bdev *ocssd_bdev, struct nvme_bdev_ns *nvme_
 	ocdev_io->io.iovpos = 0;
 	ocdev_io->io.iov_offset = 0;
 
-	lba = bdev_ocssd_to_disk_lba(ocssd_bdev, ocssd_ns, zone->write_pointer);
+	lba = bdev_ocssd_to_disk_lba(ocssd_ns, zone->write_pointer);
 
 	rc = spdk_nvme_ns_cmd_writev_with_md(nvme_ns->ns, qpair, lba,
 					     lba_count, bdev_ocssd_append_cb,
@@ -630,8 +601,8 @@ bdev_ocssd_reset_zone(struct ocssd_bdev *ocssd_bdev, struct nvme_bdev_ns *nvme_n
 	}
 
 	for (offset = 0; offset < num_zones; ++offset) {
-		ocdev_io->io.lba[offset] = bdev_ocssd_to_disk_lba(ocssd_bdev,
-					   ocssd_ns, slba + offset * zone_size);
+		ocdev_io->io.lba[offset] = bdev_ocssd_to_disk_lba(ocssd_ns,
+					   slba + offset * zone_size);
 	}
 
 	ocdev_io->io.zone = zone;
@@ -657,7 +628,7 @@ bdev_ocssd_fill_zone_info(struct ocssd_bdev *ocssd_bdev, struct bdev_ocssd_ns *o
 {
 	uint64_t zone_size = bdev_ocssd_get_zone_size(ocssd_bdev);
 
-	zone_info->zone_id = bdev_ocssd_from_disk_lba(ocssd_bdev, ocssd_ns, chunk_info->slba);
+	zone_info->zone_id = bdev_ocssd_from_disk_lba(ocssd_ns, chunk_info->slba);
 	zone_info->write_pointer = zone_info->zone_id;
 
 	if (chunk_info->cs.free) {
@@ -725,7 +696,7 @@ _bdev_ocssd_get_zone_info(struct ocssd_bdev *ocssd_bdev, struct nvme_bdev_ns *nv
 	uint64_t lba, offset, zone_size = bdev_ocssd_get_zone_size(ocssd_bdev);
 
 	lba = zone_id + ocdev_io->zone_info.chunk_offset * zone_size;
-	offset = bdev_ocssd_to_chunk_info_offset(ocssd_bdev, ocssd_ns, lba);
+	offset = bdev_ocssd_to_chunk_info_offset(ocssd_ns, lba);
 
 	return spdk_nvme_ctrlr_cmd_get_log_page(nvme_ns->ctrlr->ctrlr,
 						SPDK_OCSSD_LOG_CHUNK_INFO,
@@ -947,6 +918,7 @@ bdev_ocssd_push_media_events(struct nvme_bdev_ns *nvme_ns,
 			     struct spdk_ocssd_chunk_notification_entry *chunk_entry)
 {
 	struct bdev_ocssd_ns *ocssd_ns = bdev_ocssd_get_ns_from_nvme(nvme_ns);
+	const struct spdk_ocssd_geometry_data *geometry = &ocssd_ns->geometry;
 	struct spdk_bdev_media_event event;
 	struct nvme_bdev *nvme_bdev;
 	struct ocssd_bdev *ocssd_bdev;
@@ -956,9 +928,9 @@ bdev_ocssd_push_media_events(struct nvme_bdev_ns *nvme_ns,
 	if (chunk_entry->mask.lblk) {
 		num_blocks = chunk_entry->nlb;
 	} else if (chunk_entry->mask.chunk) {
-		num_blocks = ocssd_ns->geometry.clba;
+		num_blocks = geometry->clba;
 	} else if (chunk_entry->mask.pu) {
-		num_blocks = ocssd_ns->geometry.clba * ocssd_ns->geometry.num_chk;
+		num_blocks = geometry->clba * geometry->num_chk;
 	} else {
 		SPDK_WARNLOG("Invalid chunk notification mask\n");
 		return;
@@ -967,7 +939,7 @@ bdev_ocssd_push_media_events(struct nvme_bdev_ns *nvme_ns,
 	TAILQ_FOREACH(nvme_bdev, &nvme_ns->bdevs, tailq) {
 		ocssd_bdev = SPDK_CONTAINEROF(nvme_bdev, struct ocssd_bdev, nvme_bdev);
 		if (bdev_ocssd_lba_in_range(ocssd_bdev, ocssd_ns, chunk_entry->lba)) {
-			return;
+			break;
 		}
 	}
 
@@ -976,10 +948,10 @@ bdev_ocssd_push_media_events(struct nvme_bdev_ns *nvme_ns,
 		return;
 	}
 
-	lba = bdev_ocssd_from_disk_lba(ocssd_bdev, ocssd_ns, chunk_entry->lba);
+	lba = bdev_ocssd_from_disk_lba(ocssd_ns, chunk_entry->lba);
 	while (num_blocks > 0 && lba < nvme_bdev->disk.blockcnt) {
 		event.offset = lba;
-		event.num_blocks = spdk_min(num_blocks, ocssd_ns->geometry.clba);
+		event.num_blocks = spdk_min(num_blocks, geometry->clba);
 
 		rc = spdk_bdev_push_media_events(&nvme_bdev->disk, &event, 1);
 		if (spdk_unlikely(rc < 0)) {
@@ -989,7 +961,7 @@ bdev_ocssd_push_media_events(struct nvme_bdev_ns *nvme_ns,
 		}
 
 		/* Jump to the next chunk on the same parallel unit */
-		lba += ocssd_ns->geometry.clba * bdev_ocssd_num_parallel_units(ocssd_bdev);
+		lba += geometry->clba * geometry->num_grp * geometry->num_pu;
 		num_blocks -= event.num_blocks;
 	}
 }
@@ -1263,43 +1235,9 @@ bdev_ocssd_init_zones(struct bdev_ocssd_create_ctx *create_ctx)
 	return bdev_ocssd_init_zone(create_ctx);
 }
 
-static bool
-bdev_ocssd_verify_range(struct nvme_bdev_ns *nvme_ns,
-			const struct bdev_ocssd_range *range)
-{
-	struct bdev_ocssd_ns *ocssd_ns = bdev_ocssd_get_ns_from_nvme(nvme_ns);
-	const struct spdk_ocssd_geometry_data *geometry = &ocssd_ns->geometry;
-	struct ocssd_bdev *ocssd_bdev;
-	struct nvme_bdev *nvme_bdev;
-	size_t num_punits = geometry->num_pu * geometry->num_grp;
-
-	/* First verify the range is within the geometry */
-	if (range != NULL && (range->begin > range->end || range->end >= num_punits)) {
-		return false;
-	}
-
-	TAILQ_FOREACH(nvme_bdev, &nvme_ns->bdevs, tailq) {
-		ocssd_bdev = SPDK_CONTAINEROF(nvme_bdev, struct ocssd_bdev, nvme_bdev);
-
-		/* Empty range means whole namespace should be used */
-		if (range == NULL) {
-			return false;
-		}
-
-		/* Make sure the range doesn't overlap with any other range */
-		if (range->begin <= ocssd_bdev->range.end &&
-		    range->end >= ocssd_bdev->range.begin) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
 void
 bdev_ocssd_create_bdev(const char *ctrlr_name, const char *bdev_name, uint32_t nsid,
-		       const struct bdev_ocssd_range *range, bdev_ocssd_create_cb cb_fn,
-		       void *cb_arg)
+		       bdev_ocssd_create_cb cb_fn, void *cb_arg)
 {
 	struct nvme_bdev_ctrlr *nvme_bdev_ctrlr;
 	struct bdev_ocssd_create_ctx *create_ctx = NULL;
@@ -1352,12 +1290,6 @@ bdev_ocssd_create_bdev(const char *ctrlr_name, const char *bdev_name, uint32_t n
 		goto error;
 	}
 
-	if (!bdev_ocssd_verify_range(nvme_ns, range)) {
-		SPDK_ERRLOG("Invalid parallel unit range\n");
-		rc = -EINVAL;
-		goto error;
-	}
-
 	ocssd_bdev = calloc(1, sizeof(*ocssd_bdev));
 	if (!ocssd_bdev) {
 		rc = -ENOMEM;
@@ -1374,18 +1306,14 @@ bdev_ocssd_create_bdev(const char *ctrlr_name, const char *bdev_name, uint32_t n
 	create_ctx->nvme_ns = nvme_ns;
 	create_ctx->cb_fn = cb_fn;
 	create_ctx->cb_arg = cb_arg;
-	create_ctx->range = range;
+	create_ctx->range = NULL;
 
 	nvme_bdev = &ocssd_bdev->nvme_bdev;
 	nvme_bdev->nvme_ns = nvme_ns;
 	geometry = &ocssd_ns->geometry;
 
-	if (range != NULL) {
-		ocssd_bdev->range = *range;
-	} else {
-		ocssd_bdev->range.begin = 0;
-		ocssd_bdev->range.end = geometry->num_grp * geometry->num_pu - 1;
-	}
+	ocssd_bdev->range.begin = 0;
+	ocssd_bdev->range.end = geometry->num_grp * geometry->num_pu - 1;
 
 	nvme_bdev->disk.name = strdup(bdev_name);
 	if (!nvme_bdev->disk.name) {
@@ -1399,11 +1327,11 @@ bdev_ocssd_create_bdev(const char *ctrlr_name, const char *bdev_name, uint32_t n
 	nvme_bdev->disk.module = &ocssd_if;
 	nvme_bdev->disk.blocklen = spdk_nvme_ns_get_extended_sector_size(ns);
 	nvme_bdev->disk.zoned = true;
-	nvme_bdev->disk.blockcnt = bdev_ocssd_num_parallel_units(ocssd_bdev) *
+	nvme_bdev->disk.blockcnt = geometry->num_grp * geometry->num_pu *
 				   geometry->num_chk * geometry->clba;
 	nvme_bdev->disk.zone_size = geometry->clba;
 	nvme_bdev->disk.max_open_zones = geometry->maxoc;
-	nvme_bdev->disk.optimal_open_zones = bdev_ocssd_num_parallel_units(ocssd_bdev);
+	nvme_bdev->disk.optimal_open_zones = geometry->num_grp * geometry->num_pu;
 	nvme_bdev->disk.write_unit_size = geometry->ws_opt;
 	nvme_bdev->disk.media_events = true;
 

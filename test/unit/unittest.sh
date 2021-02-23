@@ -15,6 +15,7 @@ cd "$rootdir"
 function unittest_bdev() {
 	$valgrind $testdir/lib/bdev/bdev.c/bdev_ut
 	$valgrind $testdir/lib/bdev/nvme/bdev_ocssd.c/bdev_ocssd_ut
+	$valgrind $testdir/lib/bdev/nvme/bdev_nvme.c/bdev_nvme_ut
 	$valgrind $testdir/lib/bdev/raid/bdev_raid.c/bdev_raid_ut
 	$valgrind $testdir/lib/bdev/bdev_zone.c/bdev_zone_ut
 	$valgrind $testdir/lib/bdev/gpt/gpt.c/gpt_ut
@@ -192,6 +193,7 @@ if [ $(uname -s) = Linux ]; then
 	run_test "unittest_ftl" unittest_ftl
 fi
 
+run_test "unittest_accel" $valgrind $testdir/lib/accel/accel.c/accel_engine_ut
 run_test "unittest_ioat" $valgrind $testdir/lib/ioat/ioat.c/ioat_ut
 if grep -q '#define SPDK_CONFIG_IDXD 1' $rootdir/include/spdk/config.h; then
 	run_test "unittest_idxd" $valgrind $testdir/lib/idxd/idxd.c/idxd_ut
