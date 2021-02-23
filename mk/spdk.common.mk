@@ -47,6 +47,7 @@ endif
 S ?= $(notdir $(CURDIR))
 
 DESTDIR?=
+EXEEXT?=
 
 ifneq ($(prefix),)
 CONFIG_PREFIX=$(prefix)
@@ -75,6 +76,10 @@ endif
 
 TARGET_ARCHITECTURE ?= $(CONFIG_ARCH)
 TARGET_MACHINE := $(firstword $(TARGET_TRIPLET_WORDS))
+
+ifeq ($(OS),Windows)
+EXEEXT = .exe
+endif
 
 COMMON_CFLAGS = -g $(C_OPT) -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wmissing-declarations -fno-strict-aliasing -I$(SPDK_ROOT_DIR)/include
 
@@ -335,7 +340,7 @@ LIB_C=\
 
 # Clean up generated files listed as arguments plus a default list
 CLEAN_C=\
-	$(Q)rm -f *.a *.o *.d *.d.tmp *.pdb *.gcno *.gcda
+	$(Q)rm -f *.a *.lib *.o *.obj *.d *.d.tmp *.pdb *.gcno *.gcda
 
 # Install a library
 INSTALL_LIB=\
