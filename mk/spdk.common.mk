@@ -250,6 +250,16 @@ LDFLAGS += --coverage
 endif
 endif
 
+ifeq ($(OS),Windows)
+COMMON_CFLAGS += -I$(SPDK_ROOT_DIR)/wpdk/build/include/wpdk -I$(SPDK_ROOT_DIR)/wpdk/build/include
+## HACK - force static linking for now
+ifeq ($(CC_TYPE),clang)
+SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi
+else
+SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi
+endif
+endif
+
 include $(CONFIG_ENV)/env.mk
 
 ifeq ($(CONFIG_ASAN),y)
