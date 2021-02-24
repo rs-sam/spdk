@@ -48,20 +48,6 @@ DPDK_INC_DIR := $(DPDK_ABS_DIR)/include/dpdk
 endif
 DPDK_INC := -I$(DPDK_INC_DIR)
 
-ifeq ($(OS),Windows)
-COMMON_CFLAGS += -I$(DPDK_ABS_DIR)/include/wpdk -I$(DPDK_ABS_DIR)/include
-## HACK - force static linking for now
-ifeq ($(CC_TYPE),clang)
-SYS_LIBS += -L$(DPDK_ABS_DIR)/lib $(DPDK_ABS_DIR)/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi
-else
-SYS_LIBS += -L$(DPDK_ABS_DIR)/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi
-endif
-endif
-
-ifeq ($(CC_TYPE)-$(OS),clang-Windows)
-SYS_LIBS += -lmincore
-endif
-
 DPDK_LIB_LIST = rte_eal rte_mempool rte_ring rte_mbuf rte_pci rte_bus_pci rte_mempool_ring
 
 ifeq ($(OS),Linux)

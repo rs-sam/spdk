@@ -130,10 +130,8 @@ COMMON_CFLAGS += -fPIC
 endif
 
 # Enable stack buffer overflow checking
-ifneq ($(CC_TYPE)-$(OS),gcc-Windows)
-## HACK - don't understand why this doesn't work!
+
 COMMON_CFLAGS += -fstack-protector
-endif
 
 # Prevent accidental multiple definitions of global variables
 COMMON_CFLAGS += -fno-common
@@ -254,9 +252,9 @@ ifeq ($(OS),Windows)
 COMMON_CFLAGS += -I$(SPDK_ROOT_DIR)/wpdk/build/include/wpdk -I$(SPDK_ROOT_DIR)/wpdk/build/include
 ## HACK - force static linking for now
 ifeq ($(CC_TYPE),clang)
-SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi
+SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi -lmincore
 else
-SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi
+SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi -lssp
 endif
 endif
 
