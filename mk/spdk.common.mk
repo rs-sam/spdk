@@ -130,7 +130,6 @@ COMMON_CFLAGS += -fPIC
 endif
 
 # Enable stack buffer overflow checking
-
 COMMON_CFLAGS += -fstack-protector
 
 # Prevent accidental multiple definitions of global variables
