@@ -65,7 +65,7 @@ struct nvme_bdev_ns {
 	int			ref;
 	struct spdk_nvme_ns	*ns;
 	struct nvme_bdev_ctrlr	*ctrlr;
-	TAILQ_HEAD(, nvme_bdev)	bdevs;
+	struct nvme_bdev	*bdev;
 	void			*type_ctx;
 };
 
@@ -117,7 +117,6 @@ struct nvme_bdev {
 	struct spdk_bdev	disk;
 	struct nvme_bdev_ns	*nvme_ns;
 	bool			opal;
-	TAILQ_ENTRY(nvme_bdev)	tailq;
 };
 
 struct nvme_bdev_poll_group {
@@ -192,6 +191,12 @@ static inline struct nvme_bdev_ns *
 nvme_bdev_to_bdev_ns(struct nvme_bdev *nbdev)
 {
 	return nbdev->nvme_ns;
+}
+
+static inline struct nvme_bdev *
+nvme_bdev_ns_to_bdev(struct nvme_bdev_ns *nvme_ns)
+{
+	return nvme_ns->bdev;
 }
 
 #endif /* SPDK_COMMON_BDEV_NVME_H */

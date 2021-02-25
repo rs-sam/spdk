@@ -585,19 +585,20 @@ static int
 uring_sock_close(struct spdk_sock *_sock)
 {
 	struct spdk_uring_sock *sock = __uring_sock(_sock);
-	int rc;
 
 	assert(TAILQ_EMPTY(&_sock->pending_reqs));
 	assert(sock->group == NULL);
 
+	/* If the socket fails to close, the best choice is to
+	 * leak the fd but continue to free the rest of the sock
+	 * memory. */
+	close(sock->fd);
+
 	spdk_pipe_destroy(sock->recv_pipe);
 	free(sock->recv_buf);
-	rc = close(sock->fd);
-	if (rc == 0) {
-		free(sock);
-	}
+	free(sock);
 
-	return rc;
+	return 0;
 }
 
 static ssize_t
@@ -917,6 +918,14 @@ sock_uring_group_reap(struct spdk_uring_sock_group_impl *group, int max, int max
 	TAILQ_FOREACH_SAFE(sock, &group->pending_recv, link, tmp) {
 		if (count == max_read_events) {
 			break;
+		}
+
+		/* If the socket's cb_fn is NULL, just remove it from
+		 * the list and do not add it to socks array */
+		if (spdk_unlikely(sock->base.cb_fn == NULL)) {
+			sock->pending_recv = false;
+			TAILQ_REMOVE(&group->pending_recv, sock, link);
+			continue;
 		}
 
 		socks[count++] = &sock->base;

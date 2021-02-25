@@ -45,7 +45,7 @@ DPDK_KMODS = true
 endif
 DPDK_OPTS += -Denable_kmods=$(DPDK_KMODS)
 
-ifeq ($(CONFIG_DEBUG), y)
+ifeq ($(CONFIG_DEBUG),y)
 DPDK_OPTS += --buildtype=debug
 endif
 
@@ -73,7 +73,7 @@ endif
 DPDK_OPTS += -Dmachine=$(TARGET_ARCHITECTURE)
 
 ifneq ($(CONFIG_CROSS_PREFIX),)
-ifeq ($(OS)-$(CONFIG_CROSS_PREFIX),Windows-x86_64-w64-mingw32)
+ifeq ($(findstring mingw,$(CONFIG_CROSS_PREFIX)),mingw)
 DPDK_OPTS += --cross-file $(SPDK_ROOT_DIR)/dpdk/config/x86/cross-mingw
 else
 $(error Automatic DPDK cross build is not supported. Please compile DPDK manually \

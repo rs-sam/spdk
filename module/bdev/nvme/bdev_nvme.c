@@ -295,9 +295,7 @@ bdev_nvme_destruct(void *ctx)
 	struct nvme_bdev *nvme_disk = ctx;
 	struct nvme_bdev_ns *nvme_ns = nvme_disk->nvme_ns;
 
-	pthread_mutex_lock(&g_bdev_nvme_mutex);
-	TAILQ_REMOVE(&nvme_ns->bdevs, nvme_disk, tailq);
-	pthread_mutex_unlock(&g_bdev_nvme_mutex);
+	nvme_ns->bdev = NULL;
 
 	nvme_bdev_ns_detach(nvme_ns);
 
@@ -1224,7 +1222,7 @@ nvme_bdev_create(struct nvme_bdev_ctrlr *nvme_bdev_ctrlr, struct nvme_bdev_ns *n
 	}
 
 	nvme_ns->ref++;
-	TAILQ_INSERT_TAIL(&nvme_ns->bdevs, bdev, tailq);
+	nvme_ns->bdev = bdev;
 
 	return 0;
 }
@@ -1345,9 +1343,10 @@ nvme_ctrlr_depopulate_namespace_done(struct nvme_bdev_ns *nvme_ns)
 static void
 nvme_ctrlr_depopulate_standard_namespace(struct nvme_bdev_ns *nvme_ns)
 {
-	struct nvme_bdev *bdev, *tmp;
+	struct nvme_bdev *bdev;
 
-	TAILQ_FOREACH_SAFE(bdev, &nvme_ns->bdevs, tailq, tmp) {
+	bdev = nvme_bdev_ns_to_bdev(nvme_ns);
+	if (bdev != NULL) {
 		spdk_bdev_unregister(&bdev->disk, NULL, NULL);
 	}
 
@@ -1420,7 +1419,8 @@ nvme_ctrlr_populate_namespaces(struct nvme_bdev_ctrlr *nvme_bdev_ctrlr,
 			/* NS is still there but attributes may have changed */
 			ns = spdk_nvme_ctrlr_get_ns(ctrlr, nsid);
 			num_sectors = spdk_nvme_ns_get_num_sectors(ns);
-			bdev = TAILQ_FIRST(&nvme_ns->bdevs);
+			bdev = nvme_bdev_ns_to_bdev(nvme_ns);
+			assert(bdev != NULL);
 			if (bdev->disk.blockcnt != num_sectors) {
 				SPDK_NOTICELOG("NSID %u is resized: bdev name %s, old size %" PRIu64 ", new size %" PRIu64 "\n",
 					       nsid,
@@ -1444,7 +1444,7 @@ nvme_ctrlr_populate_namespaces(struct nvme_bdev_ctrlr *nvme_bdev_ctrlr,
 				nvme_ns->type = NVME_BDEV_NS_STANDARD;
 			}
 
-			TAILQ_INIT(&nvme_ns->bdevs);
+			nvme_ns->bdev = NULL;
 
 			if (ctx) {
 				ctx->populates_in_progress++;
@@ -1529,11 +1529,13 @@ nvme_bdev_ctrlr_create(struct spdk_nvme_ctrlr *ctrlr,
 
 	TAILQ_INIT(&nvme_bdev_ctrlr->trids);
 	nvme_bdev_ctrlr->num_ns = spdk_nvme_ctrlr_get_num_ns(ctrlr);
-	nvme_bdev_ctrlr->namespaces = calloc(nvme_bdev_ctrlr->num_ns, sizeof(struct nvme_bdev_ns *));
-	if (!nvme_bdev_ctrlr->namespaces) {
-		SPDK_ERRLOG("Failed to allocate block namespaces pointer\n");
-		rc = -ENOMEM;
-		goto err_alloc_namespaces;
+	if (nvme_bdev_ctrlr->num_ns != 0) {
+		nvme_bdev_ctrlr->namespaces = calloc(nvme_bdev_ctrlr->num_ns, sizeof(struct nvme_bdev_ns *));
+		if (!nvme_bdev_ctrlr->namespaces) {
+			SPDK_ERRLOG("Failed to allocate block namespaces pointer\n");
+			rc = -ENOMEM;
+			goto err_alloc_namespaces;
+		}
 	}
 
 	trid_entry = calloc(1, sizeof(*trid_entry));
@@ -1812,7 +1814,7 @@ nvme_ctrlr_populate_namespaces_done(struct nvme_async_probe_ctx *ctx)
 {
 	struct nvme_bdev_ctrlr	*nvme_bdev_ctrlr;
 	struct nvme_bdev_ns	*nvme_ns;
-	struct nvme_bdev	*nvme_bdev, *tmp;
+	struct nvme_bdev	*nvme_bdev;
 	uint32_t		i, nsid;
 	size_t			j;
 
@@ -1831,16 +1833,19 @@ nvme_ctrlr_populate_namespaces_done(struct nvme_async_probe_ctx *ctx)
 			continue;
 		}
 		assert(nvme_ns->id == nsid);
-		TAILQ_FOREACH_SAFE(nvme_bdev, &nvme_ns->bdevs, tailq, tmp) {
-			if (j < ctx->count) {
-				ctx->names[j] = nvme_bdev->disk.name;
-				j++;
-			} else {
-				SPDK_ERRLOG("Maximum number of namespaces supported per NVMe controller is %du. Unable to return all names of created bdevs\n",
-					    ctx->count);
-				populate_namespaces_cb(ctx, 0, -ERANGE);
-				return;
-			}
+		nvme_bdev = nvme_bdev_ns_to_bdev(nvme_ns);
+		if (nvme_bdev == NULL) {
+			assert(nvme_ns->type == NVME_BDEV_NS_OCSSD);
+			continue;
+		}
+		if (j < ctx->count) {
+			ctx->names[j] = nvme_bdev->disk.name;
+			j++;
+		} else {
+			SPDK_ERRLOG("Maximum number of namespaces supported per NVMe controller is %du. Unable to return all names of created bdevs\n",
+				    ctx->count);
+			populate_namespaces_cb(ctx, 0, -ERANGE);
+			return;
 		}
 	}
 
