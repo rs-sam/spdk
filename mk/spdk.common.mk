@@ -130,10 +130,7 @@ COMMON_CFLAGS += -fPIC
 endif
 
 # Enable stack buffer overflow checking
-ifneq ($(CC_TYPE)-$(OS),gcc-Windows)
-# cause failures with GCC - needs investigating
 COMMON_CFLAGS += -fstack-protector
-endif
 
 # Prevent accidental multiple definitions of global variables
 COMMON_CFLAGS += -fno-common
@@ -257,7 +254,8 @@ ifeq ($(CC_TYPE),clang)
 SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi -lmincore
 else
 SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi
-# HACK - stack protection -lssp
+# workaround for gcc bug 86832
+COMMON_CFLAGS += -mstack-protector-guard=global
 endif
 endif
 
