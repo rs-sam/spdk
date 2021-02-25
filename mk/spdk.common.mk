@@ -233,10 +233,7 @@ endif
 else
 COMMON_CFLAGS += -DNDEBUG -O2
 # Enable _FORTIFY_SOURCE checks - these only work when optimizations are enabled.
-ifneq ($(CONFIG_CROSS_PREFIX),x86_64-w64-mingw32)
-## HACK - link fails with a missing check function for cross builds
 COMMON_CFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
-endif
 endif
 
 ifeq ($(CONFIG_COVERAGE), y)
@@ -253,7 +250,7 @@ COMMON_CFLAGS += -I$(SPDK_ROOT_DIR)/wpdk/build/include/wpdk -I$(SPDK_ROOT_DIR)/w
 ifeq ($(CC_TYPE),clang)
 SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi -lmincore
 else
-SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi
+SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi -l:libssp.a
 # workaround for gcc bug 86832
 COMMON_CFLAGS += -mstack-protector-guard=global
 endif
