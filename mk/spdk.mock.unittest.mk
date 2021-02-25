@@ -30,10 +30,23 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-LDFLAGS += \
-	-Wl,--wrap,calloc \
-	-Wl,--wrap,pthread_mutexattr_init \
-	-Wl,--wrap,pthread_mutex_init \
-	-Wl,--wrap,recvmsg \
-	-Wl,--wrap,sendmsg \
-	-Wl,--wrap,writev
+SPDK_MOCK_SYSCALLS = \
+	calloc \
+	pthread_mutexattr_init \
+	pthread_mutex_init \
+	recvmsg \
+	sendmsg \
+	writev
+
+define add_wrap_with_prefix
+$(2:%=-Wl,--wrap,$(1)%)
+endef
+
+ifeq ($(OS),Windows)
+ifeq ($(CC_TYPE),gcc)
+# Wrappers for GCC on Windows require a wpdk_ prefix
+LDFLAGS += $(call add_wrap_with_prefix,wpdk_,$(SPDK_MOCK_SYSCALLS))
+endif
+else
+LDFLAGS += $(call add_wrap_with_prefix,,$(SPDK_MOCK_SYSCALLS))
+endif
