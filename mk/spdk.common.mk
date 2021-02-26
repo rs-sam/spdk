@@ -248,6 +248,17 @@ LDFLAGS += --coverage
 endif
 endif
 
+ifeq ($(OS),Windows)
+COMMON_CFLAGS += -I$(SPDK_ROOT_DIR)/wpdk/build/include/wpdk -I$(SPDK_ROOT_DIR)/wpdk/build/include
+LDFLAGS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib
+ifeq ($(CONFIG_SHARED),y)
+SYS_LIBS += -lwpdk
+else
+SYS_LIBS += $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a
+endif
+SYS_LIBS += -ldbghelp -lkernel32 -lsetupapi -lws2_32 -lrpcrt4 -liphlpapi
+endif
+
 include $(CONFIG_ENV)/env.mk
 
 ifeq ($(CONFIG_ASAN),y)
