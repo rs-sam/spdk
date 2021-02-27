@@ -110,7 +110,7 @@ uninstall: $(DIRS-y)
 
 ifneq ($(SKIP_DPDK_BUILD),1)
 dpdkdeps $(DPDK_DEPS): $(WPDK)
-dpdkbuild: $(WPDK) $(DPDK_DEPS) $(WPDK)
+dpdkbuild: $(WPDK) $(DPDK_DEPS)
 endif
 
 lib: $(WPDK) $(DPDKBUILD) $(VFIOUSERBUILD)
