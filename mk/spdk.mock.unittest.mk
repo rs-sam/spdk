@@ -30,23 +30,26 @@
 #  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-ifneq ($(OS),Windows)
-LDFLAGS += \
-	-Wl,--wrap,calloc \
-	-Wl,--wrap,pthread_mutexattr_init \
-	-Wl,--wrap,pthread_mutex_init \
-	-Wl,--wrap,recvmsg \
-	-Wl,--wrap,sendmsg \
-	-Wl,--wrap,writev
-else
-## HACK - how to handle gcc wrapping ENV_WRAP_PREFIX ???
-ifneq ($(CC_TYPE),clang)
-LDFLAGS += \
-	-Wl,--wrap,wpdk_calloc \
-	-Wl,--wrap,wpdk_pthread_mutexattr_init \
-	-Wl,--wrap,wpdk_pthread_mutex_init \
-	-Wl,--wrap,wpdk_recvmsg \
-	-Wl,--wrap,wpdk_sendmsg \
-	-Wl,--wrap,wpdk_writev
+SPDK_MOCK_SYSCALLS = \
+	calloc \
+	pthread_mutexattr_init \
+	pthread_mutex_init \
+	recvmsg \
+	sendmsg \
+	writev
+
+define add_wrap_with_prefix
+$(2:%=-Wl,--wrap,$(1)%)
+endef
+
+ifeq ($(OS),Windows)
+# Windows needs a thin layer above the system calls to provide POSIX
+# functionality. For GCC, use the prefix wpdk_ to ensure that the layer
+# is called. For other compilers, --wrap is not supported so the layer
+# implements an alternative mechanism to enable mocking.
+ifeq ($(CC_TYPE),gcc)
+LDFLAGS += $(call add_wrap_with_prefix,wpdk_,$(SPDK_MOCK_SYSCALLS))
 endif
+else
+LDFLAGS += $(call add_wrap_with_prefix,,$(SPDK_MOCK_SYSCALLS))
 endif

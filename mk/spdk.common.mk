@@ -132,6 +132,11 @@ endif
 # Enable stack buffer overflow checking
 COMMON_CFLAGS += -fstack-protector
 
+ifeq ($(OS).$(CC_TYPE),Windows.gcc)
+# Workaround for gcc bug 86832 - invalid TLS usage
+COMMON_CFLAGS += -mstack-protector-guard=global
+endif
+
 # Prevent accidental multiple definitions of global variables
 COMMON_CFLAGS += -fno-common
 
@@ -250,13 +255,15 @@ endif
 
 ifeq ($(OS),Windows)
 COMMON_CFLAGS += -I$(SPDK_ROOT_DIR)/wpdk/build/include/wpdk -I$(SPDK_ROOT_DIR)/wpdk/build/include
-## HACK - force static linking for now
-ifeq ($(CC_TYPE),clang)
-SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a -ldbghelp -lkernel32 -lsetupapi -lmincore
+LDFLAGS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib
+ifeq ($(CONFIG_SHARED),y)
+SYS_LIBS += -lwpdk
 else
-SYS_LIBS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib -lwpdk -ldbghelp -lkernel32 -lsetupapi -l:libssp.a
-# workaround for gcc bug 86832
-COMMON_CFLAGS += -mstack-protector-guard=global
+SYS_LIBS += $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a
+endif
+SYS_LIBS += -ldbghelp -lkernel32 -lsetupapi -lws2_32 -lrpcrt4 -liphlpapi
+ifeq ($(CC_TYPE),clang)
+SYS_LIBS += -lmincore
 endif
 endif
 
@@ -296,6 +303,11 @@ SYS_LIBS += -lcrypto
 
 ifneq ($(CONFIG_NVME_CUSE)$(CONFIG_FUSE),nn)
 SYS_LIBS += -lfuse3
+endif
+
+ifeq ($(OS).$(CC_TYPE),Windows.gcc)
+# Include libssp.a for stack-protector and _FORTIFY_SOURCE
+SYS_LIBS += -l:libssp.a
 endif
 
 MAKEFLAGS += --no-print-directory

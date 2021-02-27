@@ -64,6 +64,9 @@ endif
 endif
 
 ifeq ($(OS),Windows)
+ifeq ($(wildcard $(SPDK_ROOT_DIR)/wpdk),)
+$(error WPDK not found. Please run 'git submodule add https://github.com/wpdk/wpdk' before make)
+endif
 WPDK = wpdk
 DIRS-y += wpdk
 endif
@@ -107,7 +110,7 @@ uninstall: $(DIRS-y)
 
 ifneq ($(SKIP_DPDK_BUILD),1)
 dpdkdeps $(DPDK_DEPS): $(WPDK)
-dpdkbuild: $(DPDK_DEPS) $(WPDK)
+dpdkbuild: $(WPDK) $(DPDK_DEPS)
 endif
 
 lib: $(WPDK) $(DPDKBUILD) $(VFIOUSERBUILD)
