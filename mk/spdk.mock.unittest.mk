@@ -43,8 +43,11 @@ $(2:%=-Wl,--wrap,$(1)%)
 endef
 
 ifeq ($(OS),Windows)
+# Windows needs a thin layer above the system calls to provide POSIX
+# functionality. For GCC, use the prefix wpdk_ to ensure that the layer
+# is called. For other compilers, --wrap is not supported so the layer
+# implements an alternative mechanism to enable mocking.
 ifeq ($(CC_TYPE),gcc)
-# Wrappers for GCC on Windows require a wpdk_ prefix
 LDFLAGS += $(call add_wrap_with_prefix,wpdk_,$(SPDK_MOCK_SYSCALLS))
 endif
 else
