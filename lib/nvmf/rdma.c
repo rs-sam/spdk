@@ -277,11 +277,6 @@ struct spdk_nvmf_rdma_resource_opts {
 	bool				shared;
 };
 
-struct spdk_nvmf_recv_wr_list {
-	struct ibv_recv_wr	*first;
-	struct ibv_recv_wr	*last;
-};
-
 struct spdk_nvmf_rdma_resources {
 	/* Array of size "max_queue_depth" containing RDMA requests. */
 	struct spdk_nvmf_rdma_request		*reqs;
@@ -307,9 +302,6 @@ struct spdk_nvmf_rdma_resources {
 	void					*bufs;
 	struct ibv_mr				*bufs_mr;
 
-	/* The list of pending recvs to transfer */
-	struct spdk_nvmf_recv_wr_list		recvs_to_post;
-
 	/* Receives that are waiting for a request object */
 	STAILQ_HEAD(, spdk_nvmf_rdma_recv)	incoming_queue;
 
@@ -334,7 +326,7 @@ struct spdk_nvmf_rdma_qpair {
 
 	struct spdk_rdma_qp			*rdma_qp;
 	struct rdma_cm_id			*cm_id;
-	struct ibv_srq				*srq;
+	struct spdk_rdma_srq			*srq;
 	struct rdma_cm_id			*listen_id;
 
 	/* The maximum number of I/O outstanding on this connection at one time */
@@ -422,7 +414,7 @@ struct spdk_nvmf_rdma_poller {
 	uint16_t				max_srq_depth;
 
 	/* Shared receive queue */
-	struct ibv_srq				*srq;
+	struct spdk_rdma_srq			*srq;
 
 	struct spdk_nvmf_rdma_resources		*resources;
 	struct spdk_nvmf_rdma_poller_stat	stat;
@@ -687,10 +679,11 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 	struct spdk_nvmf_rdma_resources	*resources;
 	struct spdk_nvmf_rdma_request	*rdma_req;
 	struct spdk_nvmf_rdma_recv	*rdma_recv;
-	struct ibv_qp			*qp;
-	struct ibv_srq			*srq;
+	struct spdk_rdma_qp		*qp = NULL;
+	struct spdk_rdma_srq		*srq = NULL;
+	struct ibv_recv_wr		*bad_wr = NULL;
 	uint32_t			i;
-	int				rc;
+	int				rc = 0;
 
 	resources = calloc(1, sizeof(struct spdk_nvmf_rdma_resources));
 	if (!resources) {
@@ -752,9 +745,13 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 	STAILQ_INIT(&resources->incoming_queue);
 	STAILQ_INIT(&resources->free_queue);
 
-	for (i = 0; i < opts->max_queue_depth; i++) {
-		struct ibv_recv_wr *bad_wr = NULL;
+	if (opts->shared) {
+		srq = (struct spdk_rdma_srq *)opts->qp;
+	} else {
+		qp = (struct spdk_rdma_qp *)opts->qp;
+	}
 
+	for (i = 0; i < opts->max_queue_depth; i++) {
 		rdma_recv = &resources->recvs[i];
 		rdma_recv->qpair = opts->qpair;
 
@@ -780,15 +777,10 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 
 		rdma_recv->wr.wr_id = (uintptr_t)&rdma_recv->rdma_wr;
 		rdma_recv->wr.sg_list = rdma_recv->sgl;
-		if (opts->shared) {
-			srq = (struct ibv_srq *)opts->qp;
-			rc = ibv_post_srq_recv(srq, &rdma_recv->wr, &bad_wr);
+		if (srq) {
+			spdk_rdma_srq_queue_recv_wrs(srq, &rdma_recv->wr);
 		} else {
-			qp = (struct ibv_qp *)opts->qp;
-			rc = ibv_post_recv(qp, &rdma_recv->wr, &bad_wr);
-		}
-		if (rc) {
-			goto cleanup;
+			spdk_rdma_qp_queue_recv_wrs(qp, &rdma_recv->wr);
 		}
 	}
 
@@ -828,6 +820,16 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 		/* Initialize request state to FREE */
 		rdma_req->state = RDMA_REQUEST_STATE_FREE;
 		STAILQ_INSERT_TAIL(&resources->free_queue, rdma_req, state_link);
+	}
+
+	if (srq) {
+		rc = spdk_rdma_srq_flush_recv_wrs(srq, &bad_wr);
+	} else {
+		rc = spdk_rdma_qp_flush_recv_wrs(qp, &bad_wr);
+	}
+
+	if (rc) {
+		goto cleanup;
 	}
 
 	return resources;
@@ -893,7 +895,8 @@ nvmf_rdma_qpair_destroy(struct spdk_nvmf_rdma_qpair *rqpair)
 			STAILQ_FOREACH_SAFE(rdma_recv, &rqpair->resources->incoming_queue, link, recv_tmp) {
 				if (rqpair == rdma_recv->qpair) {
 					STAILQ_REMOVE(&rqpair->resources->incoming_queue, rdma_recv, spdk_nvmf_rdma_recv, link);
-					rc = ibv_post_srq_recv(rqpair->srq, &rdma_recv->wr, &bad_recv_wr);
+					spdk_rdma_srq_queue_recv_wrs(rqpair->srq, &rdma_recv->wr);
+					rc = spdk_rdma_srq_flush_recv_wrs(rqpair->srq, &bad_recv_wr);
 					if (rc) {
 						SPDK_ERRLOG("Unable to re-post rx descriptor\n");
 					}
@@ -988,7 +991,7 @@ nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 	qp_init_attr.recv_cq	= rqpair->poller->cq;
 
 	if (rqpair->srq) {
-		qp_init_attr.srq		= rqpair->srq;
+		qp_init_attr.srq		= rqpair->srq->srq;
 	} else {
 		qp_init_attr.cap.max_recv_wr	= rqpair->max_queue_depth;
 	}
@@ -1019,7 +1022,7 @@ nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 		rtransport = SPDK_CONTAINEROF(qpair->transport, struct spdk_nvmf_rdma_transport, transport);
 		transport = &rtransport->transport;
 
-		opts.qp = rqpair->rdma_qp->qp;
+		opts.qp = rqpair->rdma_qp;
 		opts.pd = rqpair->cm_id->pd;
 		opts.qpair = rqpair;
 		opts.shared = false;
@@ -1054,24 +1057,15 @@ error:
 static void
 nvmf_rdma_qpair_queue_recv_wrs(struct spdk_nvmf_rdma_qpair *rqpair, struct ibv_recv_wr *first)
 {
-	struct ibv_recv_wr *last;
 	struct spdk_nvmf_rdma_transport *rtransport = SPDK_CONTAINEROF(rqpair->qpair.transport,
 			struct spdk_nvmf_rdma_transport, transport);
 
-	last = first;
-	while (last->next != NULL) {
-		last = last->next;
-	}
-
-	if (rqpair->resources->recvs_to_post.first == NULL) {
-		rqpair->resources->recvs_to_post.first = first;
-		rqpair->resources->recvs_to_post.last = last;
-		if (rqpair->srq == NULL) {
+	if (rqpair->srq != NULL) {
+		spdk_rdma_srq_queue_recv_wrs(rqpair->srq, first);
+	} else {
+		if (spdk_rdma_qp_queue_recv_wrs(rqpair->rdma_qp, first)) {
 			STAILQ_INSERT_TAIL(&rqpair->poller->qpairs_pending_recv, rqpair, recv_link);
 		}
-	} else {
-		rqpair->resources->recvs_to_post.last->next = first;
-		rqpair->resources->recvs_to_post.last = last;
 	}
 
 	if (rtransport->rdma_opts.no_wr_batching) {
@@ -3214,7 +3208,7 @@ nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 	struct spdk_nvmf_rdma_poll_group	*rgroup;
 	struct spdk_nvmf_rdma_poller		*poller;
 	struct spdk_nvmf_rdma_device		*device;
-	struct ibv_srq_init_attr		srq_init_attr;
+	struct spdk_rdma_srq_init_attr		srq_init_attr;
 	struct spdk_nvmf_rdma_resource_opts	opts;
 	int					num_cqe;
 
@@ -3249,10 +3243,11 @@ nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			poller->max_srq_depth = rtransport->rdma_opts.max_srq_depth;
 
 			device->num_srq++;
-			memset(&srq_init_attr, 0, sizeof(struct ibv_srq_init_attr));
-			srq_init_attr.attr.max_wr = poller->max_srq_depth;
-			srq_init_attr.attr.max_sge = spdk_min(device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
-			poller->srq = ibv_create_srq(device->pd, &srq_init_attr);
+			memset(&srq_init_attr, 0, sizeof(srq_init_attr));
+			srq_init_attr.pd = device->pd;
+			srq_init_attr.srq_init_attr.attr.max_wr = poller->max_srq_depth;
+			srq_init_attr.srq_init_attr.attr.max_sge = spdk_min(device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
+			poller->srq = spdk_rdma_srq_create(&srq_init_attr);
 			if (!poller->srq) {
 				SPDK_ERRLOG("Unable to create shared receive queue, errno %d\n", errno);
 				nvmf_rdma_poll_group_destroy(&rgroup->group);
@@ -3368,7 +3363,7 @@ nvmf_rdma_poll_group_destroy(struct spdk_nvmf_transport_poll_group *group)
 			if (poller->resources) {
 				nvmf_rdma_resources_destroy(poller->resources);
 			}
-			ibv_destroy_srq(poller->srq);
+			spdk_rdma_srq_destroy(poller->srq);
 			SPDK_DEBUGLOG(rdma, "Destroyed RDMA shared queue %p\n", poller->srq);
 		}
 
@@ -3503,7 +3498,8 @@ nvmf_rdma_request_free(struct spdk_nvmf_request *req)
 		int rc;
 		struct ibv_recv_wr *bad_recv_wr;
 
-		rc = ibv_post_srq_recv(rqpair->srq, &rdma_req->recv->wr, &bad_recv_wr);
+		spdk_rdma_srq_queue_recv_wrs(rqpair->srq, &rdma_req->recv->wr);
+		rc = spdk_rdma_srq_flush_recv_wrs(rqpair->srq, &bad_recv_wr);
 		if (rc) {
 			SPDK_ERRLOG("Unable to re-post rx descriptor\n");
 		}
@@ -3628,24 +3624,17 @@ _poller_submit_recvs(struct spdk_nvmf_rdma_transport *rtransport,
 	int				rc;
 
 	if (rpoller->srq) {
-		if (rpoller->resources->recvs_to_post.first != NULL) {
-			rc = ibv_post_srq_recv(rpoller->srq, rpoller->resources->recvs_to_post.first, &bad_recv_wr);
-			if (rc) {
-				_poller_reset_failed_recvs(rpoller, bad_recv_wr, rc);
-			}
-			rpoller->resources->recvs_to_post.first = NULL;
-			rpoller->resources->recvs_to_post.last = NULL;
+		rc = spdk_rdma_srq_flush_recv_wrs(rpoller->srq, &bad_recv_wr);
+		if (rc) {
+			_poller_reset_failed_recvs(rpoller, bad_recv_wr, rc);
 		}
 	} else {
 		while (!STAILQ_EMPTY(&rpoller->qpairs_pending_recv)) {
 			rqpair = STAILQ_FIRST(&rpoller->qpairs_pending_recv);
-			assert(rqpair->resources->recvs_to_post.first != NULL);
-			rc = ibv_post_recv(rqpair->rdma_qp->qp, rqpair->resources->recvs_to_post.first, &bad_recv_wr);
+			rc = spdk_rdma_qp_flush_recv_wrs(rqpair->rdma_qp, &bad_recv_wr);
 			if (rc) {
 				_qp_reset_failed_recvs(rqpair, bad_recv_wr, rc);
 			}
-			rqpair->resources->recvs_to_post.first = NULL;
-			rqpair->resources->recvs_to_post.last = NULL;
 			STAILQ_REMOVE_HEAD(&rpoller->qpairs_pending_recv, recv_link);
 		}
 	}
@@ -3828,9 +3817,8 @@ nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 					int rc;
 
 					rdma_recv->wr.next = NULL;
-					rc = ibv_post_srq_recv(rpoller->srq,
-							       &rdma_recv->wr,
-							       &bad_wr);
+					spdk_rdma_srq_queue_recv_wrs(rpoller->srq, &rdma_recv->wr);
+					rc = spdk_rdma_srq_flush_recv_wrs(rpoller->srq, &bad_wr);
 					if (rc) {
 						SPDK_ERRLOG("Failed to re-post recv WR to SRQ, err %d\n", rc);
 					}
