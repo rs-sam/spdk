@@ -915,7 +915,12 @@ vtophys_get_paddr_memseg(uint64_t vaddr)
 	if (seg != NULL) {
 		paddr = seg->iova;
 		if (paddr == RTE_BAD_IOVA) {
+#ifndef _WIN32
 			return SPDK_VTOPHYS_ERROR;
+#else
+			/* Temporary HACK if virt2phys driver is not installed */
+			return vaddr;
+#endif
 		}
 		paddr += (vaddr - (uintptr_t)seg->addr);
 		return paddr;
@@ -944,7 +949,12 @@ vtophys_get_paddr_pagemap(uint64_t vaddr)
 	}
 	if (paddr == RTE_BAD_IOVA) {
 		/* Unable to get to the physical address. */
+#ifndef _WIN32
 		return SPDK_VTOPHYS_ERROR;
+#else
+		/* Temporary HACK if virt2phys driver is not installed */
+		return vaddr;
+#endif
 	}
 
 	return paddr;
