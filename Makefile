@@ -64,11 +64,10 @@ endif
 endif
 
 ifeq ($(OS),Windows)
-ifeq ($(wildcard $(SPDK_ROOT_DIR)/wpdk),)
-$(error WPDK not found. Please run 'git submodule add https://github.com/wpdk/wpdk' before make)
-endif
+ifeq ($(CURDIR)/wpdk/build,$(CONFIG_WPDK_DIR))
 WPDK = wpdk
 DIRS-y += wpdk
+endif
 endif
 
 ifeq ($(CONFIG_SHARED),y)
