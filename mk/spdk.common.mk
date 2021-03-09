@@ -249,12 +249,13 @@ endif
 endif
 
 ifeq ($(OS),Windows)
-COMMON_CFLAGS += -I$(SPDK_ROOT_DIR)/wpdk/build/include/wpdk -I$(SPDK_ROOT_DIR)/wpdk/build/include
-LDFLAGS += -L$(SPDK_ROOT_DIR)/wpdk/build/lib
+WPDK_DIR = $(abspath $(CONFIG_WPDK_DIR))
+COMMON_CFLAGS += -I$(WPDK_DIR)/include/wpdk -I$(WPDK_DIR)/include
+LDFLAGS += -L$(WPDK_DIR)/lib
 ifeq ($(CONFIG_SHARED),y)
 SYS_LIBS += -lwpdk
 else
-SYS_LIBS += $(SPDK_ROOT_DIR)/wpdk/build/lib/libwpdk.a
+SYS_LIBS += $(WPDK_DIR)/lib/libwpdk.a
 endif
 SYS_LIBS += -ldbghelp -lkernel32 -lsetupapi -lws2_32 -lrpcrt4 -liphlpapi
 endif

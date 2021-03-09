@@ -64,8 +64,10 @@ endif
 endif
 
 ifeq ($(OS),Windows)
+ifeq ($(CURDIR)/wpdk/build,$(CONFIG_WPDK_DIR))
 WPDK = wpdk
 DIRS-y += wpdk
+endif
 endif
 
 ifeq ($(CONFIG_SHARED),y)
@@ -107,7 +109,7 @@ uninstall: $(DIRS-y)
 
 ifneq ($(SKIP_DPDK_BUILD),1)
 dpdkdeps $(DPDK_DEPS): $(WPDK)
-dpdkbuild: $(WPDK) $(DPDK_DEPS) $(WPDK)
+dpdkbuild: $(WPDK) $(DPDK_DEPS)
 endif
 
 lib: $(WPDK) $(DPDKBUILD) $(VFIOUSERBUILD)
