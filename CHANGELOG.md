@@ -7,10 +7,25 @@
 For `bdev_ocssd_create` RPC, the optional parameter `range` was removed.
 Only one OCSSD bdev can be created for one OCSSD namespace.
 
+Removed the `spdk_bdev_open` from bdev library API.
+Removed the `spdk_vbdev_register` and `spdk_bdev_part_base_construct` from bdev module API.
+Removed the `config_text` function for bdev modules to report legacy config.
+
+### blobstore
+
+Removed the `spdk_bdev_create_bs_dev_from_desc` and `spdk_bdev_create_bs_dev` API.
+
 ### env
 
 Added spdk_pci_device_allow API to allow applications to add PCI addresses to
 the allowed list after the application has started.
+
+Removed the `pci_whitelist`, `pci_blacklist` and `master_core` members of struct `spdk_env_opts`.
+
+### event
+
+Removed the `config_file`, `max_delay_us`, `pci_whitelist`
+and `pci_blacklist` members of struct `spdk_app_opts`.
 
 ### accel
 
@@ -29,6 +44,13 @@ hot-inserted SSDs should be probed. This is useful for use cases where multiple
 independent SPDK processes are running on one node.  The filter function can
 then be implemented in these processes to decide which SSDs to probe based on
 the new SSD's PCI address.
+
+### sock
+
+The type of enable_placement_id in struct spdk_sock_impl_opts is changed from
+bool to int. We can use RPC to configure different value of enable_placement_id.
+Then we can leverage SO_INCOMING_CPU to get placement_id, which aims to utilize
+CPU cache locality, enabled by setting enable_placement_id=2.
 
 ## v21.01:
 

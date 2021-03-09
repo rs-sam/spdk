@@ -395,11 +395,13 @@ struct spdk_nvmf_rdma_qpair {
 struct spdk_nvmf_rdma_poller_stat {
 	uint64_t				completions;
 	uint64_t				polls;
+	uint64_t				idle_polls;
 	uint64_t				requests;
 	uint64_t				request_latency;
 	uint64_t				pending_free_request;
 	uint64_t				pending_rdma_read;
 	uint64_t				pending_rdma_write;
+	struct spdk_rdma_qp_stats		qp_stats;
 };
 
 struct spdk_nvmf_rdma_poller {
@@ -465,6 +467,7 @@ struct spdk_nvmf_rdma_port {
 };
 
 struct rdma_transport_opts {
+	int		num_cqe;
 	uint32_t	max_srq_depth;
 	bool		no_srq;
 	bool		no_wr_batching;
@@ -493,6 +496,10 @@ struct spdk_nvmf_rdma_transport {
 };
 
 static const struct spdk_json_object_decoder rdma_transport_opts_decoder[] = {
+	{
+		"num_cqe", offsetof(struct rdma_transport_opts, num_cqe),
+		spdk_json_decode_int32, true
+	},
 	{
 		"max_srq_depth", offsetof(struct rdma_transport_opts, max_srq_depth),
 		spdk_json_decode_uint32, true
@@ -1000,6 +1007,7 @@ nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 	qp_init_attr.cap.max_send_wr	= (uint32_t)rqpair->max_queue_depth * 2;
 	qp_init_attr.cap.max_send_sge	= spdk_min((uint32_t)device->attr.max_sge, NVMF_DEFAULT_TX_SGE);
 	qp_init_attr.cap.max_recv_sge	= spdk_min((uint32_t)device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
+	qp_init_attr.stats		= &rqpair->poller->stat.qp_stats;
 
 	if (rqpair->srq == NULL && nvmf_rdma_resize_cq(rqpair, device) < 0) {
 		SPDK_ERRLOG("Failed to resize the completion queue. Cannot initialize qpair.\n");
@@ -2232,6 +2240,7 @@ nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 	TAILQ_INIT(&rtransport->poll_groups);
 
 	rtransport->transport.ops = &spdk_nvmf_transport_rdma;
+	rtransport->rdma_opts.num_cqe = DEFAULT_NVMF_RDMA_CQ_SIZE;
 	rtransport->rdma_opts.max_srq_depth = SPDK_NVMF_RDMA_DEFAULT_SRQ_DEPTH;
 	rtransport->rdma_opts.no_srq = SPDK_NVMF_RDMA_DEFAULT_NO_SRQ;
 	rtransport->rdma_opts.acceptor_backlog = SPDK_NVMF_RDMA_ACCEPTOR_BACKLOG;
@@ -2249,7 +2258,7 @@ nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 		     "  Transport opts:  max_ioq_depth=%d, max_io_size=%d,\n"
 		     "  max_io_qpairs_per_ctrlr=%d, io_unit_size=%d,\n"
 		     "  in_capsule_data_size=%d, max_aq_depth=%d,\n"
-		     "  num_shared_buffers=%d, max_srq_depth=%d, no_srq=%d,"
+		     "  num_shared_buffers=%d, num_cqe=%d, max_srq_depth=%d, no_srq=%d,"
 		     "  acceptor_backlog=%d, no_wr_batching=%d abort_timeout_sec=%d\n",
 		     opts->max_queue_depth,
 		     opts->max_io_size,
@@ -2258,6 +2267,7 @@ nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 		     opts->in_capsule_data_size,
 		     opts->max_aq_depth,
 		     opts->num_shared_buffers,
+		     rtransport->rdma_opts.num_cqe,
 		     rtransport->rdma_opts.max_srq_depth,
 		     rtransport->rdma_opts.no_srq,
 		     rtransport->rdma_opts.acceptor_backlog,
@@ -2460,6 +2470,9 @@ nvmf_rdma_dump_opts(struct spdk_nvmf_transport *transport, struct spdk_json_writ
 	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
 	spdk_json_write_named_uint32(w, "max_srq_depth", rtransport->rdma_opts.max_srq_depth);
 	spdk_json_write_named_bool(w, "no_srq", rtransport->rdma_opts.no_srq);
+	if (rtransport->rdma_opts.no_srq == true) {
+		spdk_json_write_named_int32(w, "num_cqe", rtransport->rdma_opts.num_cqe);
+	}
 	spdk_json_write_named_int32(w, "acceptor_backlog", rtransport->rdma_opts.acceptor_backlog);
 	spdk_json_write_named_bool(w, "no_wr_batching", rtransport->rdma_opts.no_wr_batching);
 }
@@ -3245,6 +3258,7 @@ nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			device->num_srq++;
 			memset(&srq_init_attr, 0, sizeof(srq_init_attr));
 			srq_init_attr.pd = device->pd;
+			srq_init_attr.stats = &poller->stat.qp_stats.recv;
 			srq_init_attr.srq_init_attr.attr.max_wr = poller->max_srq_depth;
 			srq_init_attr.srq_init_attr.attr.max_sge = spdk_min(device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
 			poller->srq = spdk_rdma_srq_create(&srq_init_attr);
@@ -3280,7 +3294,7 @@ nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		if (poller->srq) {
 			num_cqe = poller->max_srq_depth * 3;
 		} else {
-			num_cqe = DEFAULT_NVMF_RDMA_CQ_SIZE;
+			num_cqe = rtransport->rdma_opts.num_cqe;
 		}
 
 		poller->cq = ibv_create_cq(device->context, num_cqe, poller, NULL, 0);
@@ -3776,6 +3790,8 @@ nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 		SPDK_ERRLOG("Error polling CQ! (%d): %s\n",
 			    errno, spdk_strerror(errno));
 		return -1;
+	} else if (reaped == 0) {
+		rpoller->stat.idle_polls++;
 	}
 
 	rpoller->stat.polls++;
@@ -4181,12 +4197,17 @@ nvmf_rdma_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 				device_stat = &(*stat)->rdma.devices[num_devices++];
 				device_stat->name = ibv_get_device_name(rpoller->device->context->device);
 				device_stat->polls = rpoller->stat.polls;
+				device_stat->idle_polls = rpoller->stat.idle_polls;
 				device_stat->completions = rpoller->stat.completions;
 				device_stat->requests = rpoller->stat.requests;
 				device_stat->request_latency = rpoller->stat.request_latency;
 				device_stat->pending_free_request = rpoller->stat.pending_free_request;
 				device_stat->pending_rdma_read = rpoller->stat.pending_rdma_read;
 				device_stat->pending_rdma_write = rpoller->stat.pending_rdma_write;
+				device_stat->total_send_wrs = rpoller->stat.qp_stats.send.num_submitted_wrs;
+				device_stat->send_doorbell_updates = rpoller->stat.qp_stats.send.doorbell_updates;
+				device_stat->total_recv_wrs = rpoller->stat.qp_stats.recv.num_submitted_wrs;
+				device_stat->recv_doorbell_updates = rpoller->stat.qp_stats.recv.doorbell_updates;
 			}
 			return 0;
 		}

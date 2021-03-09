@@ -1600,6 +1600,43 @@ Example response:
 }
 ~~~
 
+## bdev_set_qd_sampling_period {#rpc_bdev_set_qd_sampling_period}
+
+Enable queue depth tracking on a specified bdev.
+
+### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Block device name
+period                  | Required | int         | period (in microseconds).If set to 0, polling will be disabled.
+
+### Example
+
+Example request:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "method": "bdev_set_qd_sampling_period",
+  "id": 1,
+  "params": {
+    "name": "Malloc0",
+    "period": 20
+  }
+}
+~~~
+
+Example response:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
 ## bdev_compress_create {#rpc_bdev_compress_create}
 
 Create a new compress bdev on a given base bdev.
@@ -5066,6 +5103,7 @@ io_unit_size                | Optional | number  | I/O unit size (bytes)
 max_aq_depth                | Optional | number  | Max number of admin cmds per AQ
 num_shared_buffers          | Optional | number  | The number of pooled data buffers available to the transport
 buf_cache_size              | Optional | number  | The number of shared buffers to reserve for each poll group
+num_cqe                     | Optional | number  | The number of CQ entires. Only used when no_srq=true (RDMA only)
 max_srq_depth               | Optional | number  | The number of elements in a per-thread shared receive queue (RDMA only)
 no_srq                      | Optional | boolean | Disable shared receive queue even for devices that support it. (RDMA only)
 c2h_success                 | Optional | boolean | Disable C2H success optimization (TCP only)
@@ -5898,7 +5936,11 @@ Example response:
                 "request_latency": 0,
                 "pending_free_request": 0,
                 "pending_rdma_read": 0,
-                "pending_rdma_write": 0
+                "pending_rdma_write": 0,
+                "total_send_wrs": 0,
+                "send_doorbell_updates": 0,
+                "total_recv_wrs": 0,
+                "recv_doorbell_updates": 1
               },
               {
                 "name": "mlx5_0",
@@ -5908,7 +5950,11 @@ Example response:
                 "request_latency": 1249323766184,
                 "pending_free_request": 0,
                 "pending_rdma_read": 337602,
-                "pending_rdma_write": 0
+                "pending_rdma_write": 0,
+                "total_send_wrs": 15165875,
+                "send_doorbell_updates": 1516587,
+                "total_recv_wrs": 15165875,
+                "recv_doorbell_updates": 1516587
               }
             ]
           }
@@ -7693,7 +7739,7 @@ Example response:
   "result": {
     "recv_buf_size": 2097152,
     "send_buf_size": 2097152,
-    "enable_recv_pipe": true
+    "enable_recv_pipe": true,
     "enable_zerocopy_send": true
   }
 }
@@ -7713,7 +7759,7 @@ send_buf_size           | Optional | number      | Size of socket send buffer in
 enable_recv_pipe        | Optional | boolean     | Enable or disable receive pipe
 enable_zerocopy_send    | Optional | boolean     | Enable or disable zero copy on send
 enable_quick_ack        | Optional | boolean     | Enable or disable quick ACK
-enable_placement_id     | Optional | boolean     | Enable or disable placement_id
+enable_placement_id     | Optional | number      | Enable or disable placement_id. 0:disable,1:incoming_napi,2:incoming_cpu
 
 ### Response
 
@@ -7735,7 +7781,7 @@ Example request:
     "enable_recv_pipe": false,
     "enable_zerocopy_send": true,
     "enable_quick_ack": false,
-    "enable_placement_id": false
+    "enable_placement_id": 0
   }
 }
 ~~~

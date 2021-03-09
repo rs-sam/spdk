@@ -1861,6 +1861,7 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
                                        max_aq_depth=args.max_aq_depth,
                                        num_shared_buffers=args.num_shared_buffers,
                                        buf_cache_size=args.buf_cache_size,
+                                       num_cqe=args.num_cqe,
                                        max_srq_depth=args.max_srq_depth,
                                        no_srq=args.no_srq,
                                        c2h_success=args.c2h_success,
@@ -1884,6 +1885,8 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-a', '--max-aq-depth', help='Max number of admin cmds per AQ', type=int)
     p.add_argument('-n', '--num-shared-buffers', help='The number of pooled data buffers available to the transport', type=int)
     p.add_argument('-b', '--buf-cache-size', help='The number of shared buffers to reserve for each poll group', type=int)
+    p.add_argument('-d', '--num_cqe', help="""The number of CQ entires. Only used when no_srq=true.
+    Relevant only for RDMA transport""", type=int)
     p.add_argument('-s', '--max-srq-depth', help='Max number of outstanding I/O per SRQ. Relevant only for RDMA transport', type=int)
     p.add_argument('-r', '--no-srq', action='store_true', help='Disable per-thread shared receive queue. Relevant only for RDMA transport')
     p.add_argument('-o', '--c2h-success', action='store_false', help='Disable C2H success optimization. Relevant only for TCP transport')
@@ -2584,6 +2587,7 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-i', '--impl', help='Socket implementation name, e.g. posix', required=True)
     p.add_argument('-r', '--recv-buf-size', help='Size of receive buffer on socket in bytes', type=int)
     p.add_argument('-s', '--send-buf-size', help='Size of send buffer on socket in bytes', type=int)
+    p.add_argument('-p', '--enable-placement-id', help='Option for placement-id. 0:disable,1:incoming_napi,2:incoming_cpu', type=int)
     p.add_argument('--enable-recv-pipe', help='Enable receive pipe',
                    action='store_true', dest='enable_recv_pipe')
     p.add_argument('--disable-recv-pipe', help='Disable receive pipe',
@@ -2596,10 +2600,6 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
                    action='store_true', dest='enable_quickack')
     p.add_argument('--disable-quickack', help='Disable quick ACK',
                    action='store_false', dest='enable_quickack')
-    p.add_argument('--enable-placement_id', help='Enable placement_id',
-                   action='store_true', dest='enable_placement_id')
-    p.add_argument('--disable-placement_id', help='Disable placement_id',
-                   action='store_false', dest='enable_placement_id')
     p.set_defaults(func=sock_impl_set_options, enable_recv_pipe=None, enable_zerocopy_send=None,
                    enable_quickack=None, enable_placement_id=None)
 
@@ -2688,9 +2688,14 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
         print_json = null_print
         print_array = null_print
     else:
-        args.client = rpc.client.JSONRPCClient(args.server_addr, args.port, args.timeout,
-                                               log_level=getattr(logging, args.verbose.upper()),
-                                               conn_retries=args.conn_retries)
+        try:
+            args.client = rpc.client.JSONRPCClient(args.server_addr, args.port, args.timeout,
+                                                   log_level=getattr(logging, args.verbose.upper()),
+                                                   conn_retries=args.conn_retries)
+        except JSONRPCException as ex:
+            print(ex.message)
+            exit(1)
+
     if hasattr(args, 'func'):
         try:
             call_rpc_func(args)
