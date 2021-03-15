@@ -2801,6 +2801,33 @@ Example response:
 }
 ~~~
 
+## bdev_nvme_apply_firmware {#rpc_bdev_nvme_apply_firmware}
+
+Download and commit firmware to NVMe device.
+
+### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+filename                | Required | string      | filename of the firmware to download
+bdev_name               | Required | string      | Name of the NVMe block device
+
+### Example
+
+Example request:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "method": "bdev_nvme_apply_firmware",
+  "id": 1,
+  "params": {
+    "filename": "firmware_file",
+    "bdev_name": "NVMe0n1"
+  }
+}
+~~~
+
 ## bdev_rbd_create {#rpc_bdev_rbd_create}
 
 Create @ref bdev_config_rbd bdev
@@ -3309,6 +3336,79 @@ Example request:
   "jsonrpc": "2.0",
   "method": "bdev_ftl_delete",
   "id": 1
+}
+~~~
+
+Example response:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
+## bdev_ocssd_create {#rpc_bdev_ocssd_create}
+
+Create Open Channel zoned bdev on specified Open Channel controller.
+
+### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+ctrlr_name              | Required | string      | OC NVMe controller
+name                    | Required | string      | Bdev name to create
+nsid                    | Optional | string      | namespace ID
+
+### Example
+
+Example request:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "method": "bdev_ocssd_create",
+  "id": 1,
+  "params": {
+    "ctrlr_name": "nvme0",
+    "bdev_name": "nvme0n1"
+  }
+}
+~~~
+
+Example response:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
+## bdev_ocssd_delete {#rpc_bdev_ocssd_delete}
+
+Delete Open Channel zoned bdev.
+
+### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Bdev name to delete
+
+### Example
+
+Example request:
+
+~~~
+{
+  "jsonrpc": "2.0",
+  "method": "bdev_ocssd_delete",
+  "id": 1,
+  "params": {
+    "name": "nvme0n1"
+  }
 }
 ~~~
 
