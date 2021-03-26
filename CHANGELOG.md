@@ -2,6 +2,13 @@
 
 ## v21.04: (Upcoming Release)
 
+
+### nvme
+
+Added an accelerated table pointer in spdk_nvme_poll_group
+which can be used provide the accelerated functions by users with
+hardware engine, such as crc32c accelerated function.
+
 ### bdev
 
 For `bdev_ocssd_create` RPC, the optional parameter `range` was removed.
@@ -39,11 +46,39 @@ Added `spdk_nvme_qpair_get_optimal_poll_group` function and `qpair_get_optimal_p
 function pointer in spdk_nvmf_transport_ops structure in order to add the qpair to the most
 suitable polling group.
 
+Add OPTPERF and namespace optimal performance fields to nvme_spec.h.
+
 Added spdk_nvme_set_hotplug_filter API to allow applications to choose which
 hot-inserted SSDs should be probed. This is useful for use cases where multiple
 independent SPDK processes are running on one node.  The filter function can
 then be implemented in these processes to decide which SSDs to probe based on
 the new SSD's PCI address.
+
+### nvmf
+
+Removed the `spdk_nvmf_tgt_listen` and `spdk_nvmf_subsystem_add_ns` API.
+
+Added new APIs:
+- `spdk_nvmf_poll_group_dump_stat` (function in `nvmf.h`).
+- `poll_group_dump_stat` (transport op in `nvmf_transport.h`).
+
+The following APIs have been deprecated and will be removed in a future release:
+- `spdk_nvmf_poll_group_get_stat` (function in `nvmf.h`),
+- `spdk_nvmf_transport_poll_group_get_stat` (function in `nvmf.h`),
+- `spdk_nvmf_transport_poll_group_free_stat`(function in `nvmf.h`),
+- `spdk_nvmf_rdma_device_stat ` (struct in `nvmf.h`),
+- `spdk_nvmf_transport_poll_group_stat` (struct in `nvmf.h`),
+- `poll_group_get_stat` (transport op in `nvmf_transport.h`),
+- `poll_group_free_stat` (transport op in `nvmf_transport.h`).
+
+See header files for details.
+
+The `trtype` field in JSON returned by `nvmf_get_stats` RPC contains now the name of the transport,
+which is the same as the type for defined transports and more informative for a custom transport.
+
+### opal
+
+Removed the `spdk_opal_supported` API.
 
 ### sock
 

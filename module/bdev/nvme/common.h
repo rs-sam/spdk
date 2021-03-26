@@ -90,6 +90,7 @@ struct nvme_bdev_ctrlr {
 	bool					resetting;
 	bool					failover_in_progress;
 	bool					destruct;
+	bool					destruct_after_reset;
 	/**
 	 * PI check flags. This flags is set to NVMe controllers created only
 	 * through bdev_nvme_attach_controller RPC or .INI config file. Hot added
@@ -123,6 +124,7 @@ struct nvme_bdev {
 
 struct nvme_bdev_poll_group {
 	struct spdk_nvme_poll_group		*group;
+	struct spdk_io_channel			*accel_channel;
 	struct spdk_poller			*poller;
 	bool					collect_spin_stat;
 	uint64_t				spin_ticks;

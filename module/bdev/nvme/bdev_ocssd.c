@@ -630,8 +630,10 @@ bdev_ocssd_zone_info_cb(void *ctx, const struct spdk_nvme_cpl *cpl)
 	struct spdk_ocssd_chunk_information_entry *chunk_info = &ocdev_io->zone_info.chunk_info;
 	struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(ctx);
 	struct ocssd_bdev *ocssd_bdev = bdev_io->bdev->ctxt;
-	struct nvme_bdev_ns *nvme_ns = ocssd_bdev->nvme_bdev.nvme_ns;
-	struct bdev_ocssd_ns *ocssd_ns = bdev_ocssd_get_ns_from_nvme(nvme_ns);
+	struct nvme_io_channel *nvme_ch;
+	struct nvme_bdev_ns *nvme_ns;
+	struct spdk_nvme_qpair *qpair;
+	struct bdev_ocssd_ns *ocssd_ns;
 	struct spdk_bdev_zone_info *zone_info;
 	int rc;
 
@@ -639,6 +641,15 @@ bdev_ocssd_zone_info_cb(void *ctx, const struct spdk_nvme_cpl *cpl)
 		spdk_bdev_io_complete_nvme_status(bdev_io, 0, cpl->status.sct, cpl->status.sc);
 		return;
 	}
+
+	nvme_ch = spdk_io_channel_get_ctx(spdk_bdev_io_get_io_channel(bdev_io));
+
+	if (spdk_unlikely(!bdev_nvme_find_io_path(&ocssd_bdev->nvme_bdev, nvme_ch, &nvme_ns, &qpair))) {
+		spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_FAILED);
+		return;
+	}
+
+	ocssd_ns = bdev_ocssd_get_ns_from_nvme(nvme_ns);
 
 	zone_info = ((struct spdk_bdev_zone_info *)bdev_io->u.zone_mgmt.buf) +
 		    ocdev_io->zone_info.chunk_offset;
@@ -669,7 +680,7 @@ _bdev_ocssd_get_zone_info(struct ocssd_bdev *ocssd_bdev, struct nvme_bdev_ns *nv
 	lba = zone_id + ocdev_io->zone_info.chunk_offset * zone_size;
 	offset = bdev_ocssd_to_chunk_info_offset(ocssd_ns, lba);
 
-	return spdk_nvme_ctrlr_cmd_get_log_page(nvme_ns->ctrlr->ctrlr,
+	return spdk_nvme_ctrlr_cmd_get_log_page(spdk_nvme_ns_get_ctrlr(nvme_ns->ns),
 						SPDK_OCSSD_LOG_CHUNK_INFO,
 						spdk_nvme_ns_get_id(nvme_ns->ns),
 						&ocdev_io->zone_info.chunk_info,
@@ -1162,13 +1173,15 @@ bdev_occsd_init_zone_cb(void *ctx, const struct spdk_nvme_cpl *cpl)
 static int
 bdev_ocssd_init_zone(struct bdev_ocssd_create_ctx *create_ctx)
 {
+	struct spdk_nvme_ns *ns = create_ctx->nvme_ns->ns;
+
 	create_ctx->num_chunks = spdk_min(create_ctx->end_chunk_offset - create_ctx->chunk_offset,
 					  OCSSD_BDEV_CHUNK_INFO_COUNT);
 	assert(create_ctx->num_chunks > 0);
 
-	return spdk_nvme_ctrlr_cmd_get_log_page(create_ctx->nvme_ns->ctrlr->ctrlr,
+	return spdk_nvme_ctrlr_cmd_get_log_page(spdk_nvme_ns_get_ctrlr(ns),
 						SPDK_OCSSD_LOG_CHUNK_INFO,
-						spdk_nvme_ns_get_id(create_ctx->nvme_ns->ns),
+						spdk_nvme_ns_get_id(ns),
 						&create_ctx->chunk_info,
 						sizeof(create_ctx->chunk_info[0]) *
 						create_ctx->num_chunks,

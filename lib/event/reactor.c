@@ -703,7 +703,12 @@ _reactors_scheduler_update_core_mode(void *ctx)
 	struct spdk_reactor *reactor;
 	int rc = 0;
 
-	g_scheduler_core_number = spdk_env_get_next_core(g_scheduler_core_number);
+	if (g_scheduler_core_number == SPDK_ENV_LCORE_ID_ANY) {
+		g_scheduler_core_number = spdk_env_get_first_core();
+	} else {
+		g_scheduler_core_number = spdk_env_get_next_core(g_scheduler_core_number);
+	}
+
 	if (g_scheduler_core_number == SPDK_ENV_LCORE_ID_ANY) {
 		_reactors_scheduler_fini();
 		return;
@@ -728,7 +733,7 @@ _reactors_scheduler_balance(void *arg1, void *arg2)
 	if (g_reactor_state == SPDK_REACTOR_STATE_RUNNING) {
 		g_scheduler->balance(g_core_infos, g_reactor_count, &g_governor);
 
-		g_scheduler_core_number = spdk_env_get_first_core();
+		g_scheduler_core_number = SPDK_ENV_LCORE_ID_ANY;
 		_reactors_scheduler_update_core_mode(NULL);
 	}
 }
@@ -866,8 +871,6 @@ reactor_interrupt_run(struct spdk_reactor *reactor)
 	int block_timeout = -1; /* _EPOLL_WAIT_FOREVER */
 
 	spdk_fd_group_wait(reactor->fgrp, block_timeout);
-
-	/* TODO: add tsc records and g_framework_context_switch_monitor_enabled */
 }
 
 static void
@@ -893,13 +896,6 @@ _reactor_run(struct spdk_reactor *reactor)
 		reactor->tsc_last = now;
 
 		reactor_post_process_lw_thread(reactor, lw_thread);
-	}
-
-	if (g_framework_context_switch_monitor_enabled) {
-		if ((reactor->last_rusage + g_rusage_period) < reactor->tsc_last) {
-			get_rusage(reactor);
-			reactor->last_rusage = reactor->tsc_last;
-		}
 	}
 }
 
@@ -928,6 +924,13 @@ reactor_run(void *arg)
 			reactor_interrupt_run(reactor);
 		} else {
 			_reactor_run(reactor);
+		}
+
+		if (g_framework_context_switch_monitor_enabled) {
+			if ((reactor->last_rusage + g_rusage_period) < reactor->tsc_last) {
+				get_rusage(reactor);
+				reactor->last_rusage = reactor->tsc_last;
+			}
 		}
 
 		if (spdk_unlikely(g_scheduler_period > 0 &&
@@ -1071,8 +1074,27 @@ static int
 thread_process_interrupts(void *arg)
 {
 	struct spdk_thread *thread = arg;
+	struct spdk_reactor *reactor = spdk_reactor_get(spdk_env_get_current_core());
+	uint64_t now;
+	int rc;
 
-	return spdk_thread_poll(thread, 0, 0);
+	/* Update idle_tsc between the end of last intr_fn and the start of this intr_fn. */
+	now = spdk_get_ticks();
+	reactor->idle_tsc += now - reactor->tsc_last;
+	reactor->tsc_last = now;
+
+	rc = spdk_thread_poll(thread, 0, now);
+
+	/* Update tsc between the start and the end of this intr_fn. */
+	now = spdk_thread_get_last_tsc(thread);
+	if (rc == 0) {
+		reactor->idle_tsc += now - reactor->tsc_last;
+	} else if (rc > 0) {
+		reactor->busy_tsc += now - reactor->tsc_last;
+	}
+	reactor->tsc_last = now;
+
+	return rc;
 }
 
 static void

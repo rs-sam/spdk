@@ -90,11 +90,7 @@ endif
 ifneq ($(filter powerpc% ppc%,$(TARGET_MACHINE)),)
 COMMON_CFLAGS += -mcpu=$(TARGET_ARCHITECTURE)
 else ifeq ($(TARGET_MACHINE),aarch64)
-ifeq ($(TARGET_ARCHITECTURE),native)
-COMMON_CFLAGS += -march=armv8-a+crc
-else
 COMMON_CFLAGS += -march=$(TARGET_ARCHITECTURE)
-endif
 COMMON_CFLAGS += -DPAGE_SIZE=$(shell getconf PAGESIZE)
 else
 COMMON_CFLAGS += -march=$(TARGET_ARCHITECTURE)
@@ -381,6 +377,18 @@ UNINSTALL_LIB=\
 	rm -f "$(DESTDIR)$(libdir)/$(notdir $(LIB))"; \
 	if [ -d "$(DESTDIR)$(libdir)" ] && [ $$(ls -A "$(DESTDIR)$(libdir)" | wc -l) -eq 0 ]; then rm -rf "$(DESTDIR)$(libdir)"; fi
 
+define pkgconfig_install
+	echo "  INSTALL $(DESTDIR)$(libdir)/pkgconfig/$(notdir $(1))";
+	install -d -m 755 "$(DESTDIR)$(libdir)/pkgconfig";
+	install -m 644 "$(1)" "$(DESTDIR)$(libdir)/pkgconfig";
+endef
+
+define pkgconfig_uninstall
+	echo "  UNINSTALL $(DESTDIR)$(libdir)/pkgconfig/$(notdir $(1))";
+	rm -f "$(DESTDIR)$(libdir)/pkgconfig/$(notdir $(1))";
+	if [ -d "$(DESTDIR)$(libdir)/pkgconfig" ] && [ $$(ls -A "$(DESTDIR)$(libdir)/pkgconfig" | wc -l) -eq 0 ]; then rm -rf "$(DESTDIR)$(libdir)/pkgconfig"; fi;
+endef
+
 ifeq ($(OS),FreeBSD)
 INSTALL_REL_SYMLINK := install -l rs
 else
@@ -394,7 +402,7 @@ endef
 INSTALL_SHARED_LIB=\
 	$(Q)echo "  INSTALL $(DESTDIR)$(libdir)/$(notdir $(SHARED_LINKED_LIB))"; \
 	install -d -m 755 "$(DESTDIR)$(libdir)"; \
-	if file --mime-type $(SHARED_REALNAME_LIB) | grep -q 'application/x-sharedlib'; then \
+	if file $(SHARED_REALNAME_LIB) | grep -q 'LSB shared object'; then \
 		perm_mode=755; \
 	else \
 		perm_mode=644; \

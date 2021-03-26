@@ -53,16 +53,20 @@ enum spdk_bdev_zone_action {
 	SPDK_BDEV_ZONE_CLOSE,
 	SPDK_BDEV_ZONE_FINISH,
 	SPDK_BDEV_ZONE_OPEN,
-	SPDK_BDEV_ZONE_RESET
+	SPDK_BDEV_ZONE_RESET,
+	SPDK_BDEV_ZONE_OFFLINE,
 };
 
 enum spdk_bdev_zone_state {
-	SPDK_BDEV_ZONE_STATE_EMPTY,
-	SPDK_BDEV_ZONE_STATE_OPEN,
-	SPDK_BDEV_ZONE_STATE_FULL,
-	SPDK_BDEV_ZONE_STATE_CLOSED,
-	SPDK_BDEV_ZONE_STATE_READ_ONLY,
-	SPDK_BDEV_ZONE_STATE_OFFLINE
+	SPDK_BDEV_ZONE_STATE_EMPTY	= 0x0,
+	SPDK_BDEV_ZONE_STATE_IMP_OPEN	= 0x1,
+	/* OPEN is an alias for IMP_OPEN. OPEN is kept for backwards compatibility. */
+	SPDK_BDEV_ZONE_STATE_OPEN	= SPDK_BDEV_ZONE_STATE_IMP_OPEN,
+	SPDK_BDEV_ZONE_STATE_FULL	= 0x2,
+	SPDK_BDEV_ZONE_STATE_CLOSED	= 0x3,
+	SPDK_BDEV_ZONE_STATE_READ_ONLY	= 0x4,
+	SPDK_BDEV_ZONE_STATE_OFFLINE	= 0x5,
+	SPDK_BDEV_ZONE_STATE_EXP_OPEN	= 0x6,
 };
 
 struct spdk_bdev_zone_info {
@@ -83,12 +87,29 @@ uint64_t spdk_bdev_get_zone_size(const struct spdk_bdev *bdev);
 /**
  * Get device maximum number of open zones.
  *
+ * An open zone is defined as a zone being in zone state
+ * SPDK_BDEV_ZONE_STATE_IMP_OPEN or SPDK_BDEV_ZONE_STATE_EXP_OPEN.
+ *
  * If this value is 0, there is no limit.
  *
  * \param bdev Block device to query.
  * \return Maximum number of open zones for this zoned device.
  */
 uint32_t spdk_bdev_get_max_open_zones(const struct spdk_bdev *bdev);
+
+/**
+ * Get device maximum number of active zones.
+ *
+ * An active zone is defined as a zone being in zone state
+ * SPDK_BDEV_ZONE_STATE_IMP_OPEN, SPDK_BDEV_ZONE_STATE_EXP_OPEN or
+ * SPDK_BDEV_ZONE_STATE_CLOSED.
+ *
+ * If this value is 0, there is no limit.
+ *
+ * \param bdev Block device to query.
+ * \return Maximum number of active zones for this zoned device.
+ */
+uint32_t spdk_bdev_get_max_active_zones(const struct spdk_bdev *bdev);
 
 /**
  * Get device optimal number of open zones.
@@ -129,7 +150,7 @@ int spdk_bdev_get_zone_info(struct spdk_bdev_desc *desc, struct spdk_io_channel 
  * \param desc Block device descriptor.
  * \param ch I/O channel. Obtained by calling spdk_bdev_get_io_channel().
  * \param zone_id First logical block of a zone.
- * \param action Action to perform on a zone (open, close, reset, finish).
+ * \param action Action to perform on a zone (open, close, reset, finish, offline).
  * \param cb Called when the request is complete.
  * \param cb_arg Argument passed to cb.
  *

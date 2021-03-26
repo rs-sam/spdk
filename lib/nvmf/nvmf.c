@@ -2,7 +2,7 @@
  *   BSD LICENSE
  *
  *   Copyright (c) Intel Corporation. All rights reserved.
- *   Copyright (c) 2018-2019 Mellanox Technologies LTD. All rights reserved.
+ *   Copyright (c) 2018-2019, 2021 Mellanox Technologies LTD. All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
  *   modification, are permitted provided that the following conditions
@@ -665,16 +665,6 @@ spdk_nvmf_tgt_listen_ext(struct spdk_nvmf_tgt *tgt, const struct spdk_nvme_trans
 	}
 
 	return rc;
-}
-
-int
-spdk_nvmf_tgt_listen(struct spdk_nvmf_tgt *tgt, struct spdk_nvme_transport_id *trid)
-{
-	struct spdk_nvmf_listen_opts opts;
-
-	spdk_nvmf_listen_opts_init(&opts, sizeof(opts));
-
-	return spdk_nvmf_tgt_listen_ext(tgt, trid, &opts);
 }
 
 int
@@ -1371,31 +1361,36 @@ fini:
 }
 
 static void
-_nvmf_subsystem_disconnect_next_qpair(void *ctx)
+nvmf_poll_group_remove_subsystem_msg(void *ctx)
 {
-	struct spdk_nvmf_qpair *qpair;
-	struct nvmf_qpair_disconnect_many_ctx *qpair_ctx = ctx;
+	struct spdk_nvmf_qpair *qpair, *qpair_tmp;
 	struct spdk_nvmf_subsystem *subsystem;
 	struct spdk_nvmf_poll_group *group;
+	struct nvmf_qpair_disconnect_many_ctx *qpair_ctx = ctx;
 	int rc = 0;
+	bool have_qpairs = false;
 
 	group = qpair_ctx->group;
 	subsystem = qpair_ctx->subsystem;
 
-	TAILQ_FOREACH(qpair, &group->qpairs, link) {
+	TAILQ_FOREACH_SAFE(qpair, &group->qpairs, link, qpair_tmp) {
 		if ((qpair->ctrlr != NULL) && (qpair->ctrlr->subsys == subsystem)) {
-			break;
+			/* Use another variable to check if there were any qpairs disconnected in this call since
+			 * we can loop over all qpairs and iterator will be NULL in the end */
+			have_qpairs = true;
+			rc = spdk_nvmf_qpair_disconnect(qpair, NULL, NULL);
+			if (rc) {
+				break;
+			}
 		}
 	}
 
-	if (qpair) {
-		rc = spdk_nvmf_qpair_disconnect(qpair, _nvmf_subsystem_disconnect_next_qpair, qpair_ctx);
+	if (!have_qpairs || rc) {
+		_nvmf_poll_group_remove_subsystem_cb(ctx, rc);
+		return;
 	}
 
-	if (!qpair || rc != 0) {
-		_nvmf_poll_group_remove_subsystem_cb(ctx, rc);
-	}
-	return;
+	spdk_thread_send_msg(spdk_get_thread(), nvmf_poll_group_remove_subsystem_msg, ctx);
 }
 
 void
@@ -1403,17 +1398,17 @@ nvmf_poll_group_remove_subsystem(struct spdk_nvmf_poll_group *group,
 				 struct spdk_nvmf_subsystem *subsystem,
 				 spdk_nvmf_poll_group_mod_done cb_fn, void *cb_arg)
 {
-	struct spdk_nvmf_qpair *qpair;
 	struct spdk_nvmf_subsystem_poll_group *sgroup;
 	struct nvmf_qpair_disconnect_many_ctx *ctx;
-	int rc = 0;
 	uint32_t i;
 
 	ctx = calloc(1, sizeof(struct nvmf_qpair_disconnect_many_ctx));
-
 	if (!ctx) {
 		SPDK_ERRLOG("Unable to allocate memory for context to remove poll subsystem\n");
-		goto fini;
+		if (cb_fn) {
+			cb_fn(cb_arg, -1);
+		}
+		return;
 	}
 
 	ctx->group = group;
@@ -1428,29 +1423,7 @@ nvmf_poll_group_remove_subsystem(struct spdk_nvmf_poll_group *group,
 		sgroup->ns_info[i].state = SPDK_NVMF_SUBSYSTEM_INACTIVE;
 	}
 
-	TAILQ_FOREACH(qpair, &group->qpairs, link) {
-		if ((qpair->ctrlr != NULL) && (qpair->ctrlr->subsys == subsystem)) {
-			break;
-		}
-	}
-
-	if (qpair) {
-		rc = spdk_nvmf_qpair_disconnect(qpair, _nvmf_subsystem_disconnect_next_qpair, ctx);
-	} else {
-		/* call the callback immediately. It will handle any channel iteration */
-		_nvmf_poll_group_remove_subsystem_cb(ctx, 0);
-	}
-
-	if (rc != 0 && rc != -EINPROGRESS) {
-		free(ctx);
-		goto fini;
-	}
-
-	return;
-fini:
-	if (cb_fn) {
-		cb_fn(cb_arg, rc);
-	}
+	nvmf_poll_group_remove_subsystem_msg(ctx);
 }
 
 void
@@ -1574,6 +1547,8 @@ spdk_nvmf_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 	struct spdk_io_channel *ch;
 	struct spdk_nvmf_poll_group *group;
 
+	SPDK_ERRLOG("spdk_nvmf_poll_group_get_stat is deprecated and will be removed\n");
+
 	if (tgt == NULL || stat == NULL) {
 		return -EINVAL;
 	}
@@ -1583,4 +1558,37 @@ spdk_nvmf_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 	*stat = group->stat;
 	spdk_put_io_channel(ch);
 	return 0;
+}
+
+void
+spdk_nvmf_poll_group_dump_stat(struct spdk_nvmf_poll_group *group, struct spdk_json_write_ctx *w)
+{
+	struct spdk_nvmf_transport_poll_group *tgroup;
+
+	spdk_json_write_object_begin(w);
+
+	spdk_json_write_named_string(w, "name", spdk_thread_get_name(spdk_get_thread()));
+	spdk_json_write_named_uint32(w, "admin_qpairs", group->stat.admin_qpairs);
+	spdk_json_write_named_uint32(w, "io_qpairs", group->stat.io_qpairs);
+	spdk_json_write_named_uint64(w, "pending_bdev_io", group->stat.pending_bdev_io);
+
+	spdk_json_write_named_array_begin(w, "transports");
+
+	TAILQ_FOREACH(tgroup, &group->tgroups, link) {
+		spdk_json_write_object_begin(w);
+		/*
+		 * The trtype field intentionally contains a transport name as this is more informative.
+		 * The field has not been renamed for backward compatibility.
+		 */
+		spdk_json_write_named_string(w, "trtype", spdk_nvmf_get_transport_name(tgroup->transport));
+
+		if (tgroup->transport->ops->poll_group_dump_stat) {
+			tgroup->transport->ops->poll_group_dump_stat(tgroup, w);
+		}
+
+		spdk_json_write_object_end(w);
+	}
+
+	spdk_json_write_array_end(w);
+	spdk_json_write_object_end(w);
 }
