@@ -1,5 +1,16 @@
 # Common shell utility functions
 
+# If the shell is running on Windows, adjust uname to output Windows
+# for the kernel and WSL, Msys, or Cygwin for the operating system.
+# stderr is discarded so that the xtrace logs only show a call to uname.
+case "$(uname -a)" in
+	Linux*[Mm]icrosoft* | *Msys | *Cygwin)
+		uname() ( MSYSTEM=CYGWIN command uname "$@" |
+			sed -e's?^Linux?Windows?;s?GNU/Linux$?WSL?;s?^CYGWIN_NT[^ ]*?Windows?'
+			) 2>/dev/null
+		;;
+esac
+
 # Check if PCI device is in PCI_ALLOWED and not in PCI_BLOCKED
 # Env:
 # if PCI_ALLOWED is empty assume device is allowed
@@ -283,3 +294,19 @@ le() { cmp_versions "$1" "<=" "$2"; }
 ge() { cmp_versions "$1" ">=" "$2"; }
 eq() { cmp_versions "$1" "==" "$2"; }
 neq() { ! eq "$1" "$2"; }
+
+if [[ "$(uname -s)" = Windows ]]; then
+	WPDK_DIR="${SPDK_RUN_EXTERNAL_WPDK:-${CONFIG_WPDK_DIR:-${rootdir}/wpdk/build}}"
+
+	# On Windows, TerminateProcess is a hard stop. If wpdk_kill.sh exists,
+	# use it to call the SIGTERM handler.
+	if [[ -e "$WPDK_DIR/bin/wpdk_kill.sh" ]]; then
+		alias kill="$WPDK_DIR/bin/wpdk_kill.sh"
+	fi
+
+	# Define aliases for MSYS and Cygwin
+	if [[ "$(uname -o)" != WSL ]]; then
+		sudo() { { [[ "$1" = -E ]] && shift; [[ "$1" = -u ]] && shift 2; } 2>/dev/null; "$@"; }
+		alias ps=procps
+	fi
+fi

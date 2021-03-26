@@ -18,8 +18,6 @@ xtrace_disable
 set -e
 shopt -s expand_aliases
 
-source "$rootdir/test/common/applications.sh"
-source "$rootdir/scripts/common.sh"
 if [[ -e $rootdir/test/common/build_config.sh ]]; then
 	source "$rootdir/test/common/build_config.sh"
 elif [[ -e $rootdir/mk/config.mk ]]; then
@@ -28,6 +26,10 @@ elif [[ -e $rootdir/mk/config.mk ]]; then
 else
 	source "$rootdir/CONFIG"
 fi
+
+# Source scripts after the config so that external paths are defined.
+source "$rootdir/test/common/applications.sh"
+source "$rootdir/scripts/common.sh"
 
 # Dummy function to be called after restoring xtrace just so that it appears in the
 # xtrace log. This way we can consistently track when xtrace is enabled/disabled.
@@ -202,35 +204,30 @@ if [ $SPDK_RUN_VALGRIND -eq 0 ]; then
 	export valgrind=''
 fi
 
-case "$(uname -s)" in
-	Linux)
-		MAKE="make"
-		MAKEFLAGS=${MAKEFLAGS:--j$(nproc)}
-		# Override the default HUGEMEM in scripts/setup.sh to allocate 8GB in hugepages.
-		export HUGEMEM=8192
-		if [[ $SPDK_TEST_USE_IGB_UIO -eq 1 ]]; then
-			export DRIVER_OVERRIDE=$rootdir/dpdk/build-tmp/kernel/linux/igb_uio/igb_uio.ko
-			# Building kernel modules requires root privileges
-			MAKE="sudo $MAKE"
-		fi
-		;;
-	FreeBSD)
-		MAKE="gmake"
-		MAKEFLAGS=${MAKEFLAGS:--j$(sysctl -a | grep -E -i 'hw.ncpu' | awk '{print $2}')}
-		# FreeBSD runs a much more limited set of tests, so keep the default 2GB.
-		export HUGEMEM=2048
-		;;
-	MSYS*)
-		MAKE="make"
-		MAKEFLAGS=${MAKEFLAGS:--j$(nproc)}
-		# Keep the default 2GB.
-		export HUGEMEM=2048
-	;;
-	*)
-		echo "Unknown OS \"$(uname -s)\""
-		exit 1
-		;;
-esac
+if [ "$(uname -s)" = "Linux" ]; then
+	MAKE="make"
+	MAKEFLAGS=${MAKEFLAGS:--j$(nproc)}
+	# Override the default HUGEMEM in scripts/setup.sh to allocate 8GB in hugepages.
+	export HUGEMEM=8192
+	if [[ $SPDK_TEST_USE_IGB_UIO -eq 1 ]]; then
+		export DRIVER_OVERRIDE=igb_uio
+		# Building kernel modules requires root privileges
+		MAKE="sudo $MAKE"
+	fi
+elif [ "$(uname -s)" = "FreeBSD" ]; then
+	MAKE="gmake"
+	MAKEFLAGS=${MAKEFLAGS:--j$(sysctl -a | grep -E -i 'hw.ncpu' | awk '{print $2}')}
+	# FreeBSD runs a much more limited set of tests, so keep the default 2GB.
+	export HUGEMEM=2048
+elif [ "$(uname -s)" = "Windows" ]; then
+	MAKE="make"
+	MAKEFLAGS=${MAKEFLAGS:--j$(nproc)}
+	# Windows runs a much more limited set of tests, so keep the default 2GB.
+	export HUGEMEM=2048
+else
+	echo "Unknown OS \"$(uname -s)\""
+	exit 1
+fi
 
 if [ -z "$output_dir" ]; then
 	mkdir -p "$rootdir/../output"
