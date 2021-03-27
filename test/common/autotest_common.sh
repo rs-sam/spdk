@@ -27,7 +27,7 @@ else
 	source "$rootdir/CONFIG"
 fi
 
-# Source scripts after the config so that external paths are defined.
+# Source scripts after the config so that the definitions are available.
 source "$rootdir/test/common/applications.sh"
 source "$rootdir/scripts/common.sh"
 
@@ -222,7 +222,7 @@ elif [ "$(uname -s)" = "FreeBSD" ]; then
 elif [ "$(uname -s)" = "Windows" ]; then
 	MAKE="make"
 	MAKEFLAGS=${MAKEFLAGS:--j$(nproc)}
-	# Windows runs a much more limited set of tests, so keep the default 2GB.
+	# Keep the default 2GB for Windows.
 	export HUGEMEM=2048
 else
 	echo "Unknown OS \"$(uname -s)\""
