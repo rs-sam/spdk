@@ -284,7 +284,9 @@ ge() { cmp_versions "$1" ">=" "$2"; }
 eq() { cmp_versions "$1" "==" "$2"; }
 neq() { ! eq "$1" "$2"; }
 
-# Source definitions for Windows
 if [[ -e "$CONFIG_WPDK_DIR/bin/wpdk_common.sh" ]]; then
+	# Adjust uname to report the operating system as WSL, Msys or Cygwin
+	# and the kernel name as Windows. Define kill() to invoke the SIGTERM
+	# handler before causing a hard stop with TerminateProcess.
 	source "$CONFIG_WPDK_DIR/bin/wpdk_common.sh"
 fi
