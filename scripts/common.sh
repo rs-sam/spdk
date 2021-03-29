@@ -1,15 +1,5 @@
 # Common shell utility functions
 
-# If the target platform is Windows, adjust uname to output Windows
-# for the kernel and WSL, Msys, or Cygwin for the operating system.
-# stderr is discarded so that the xtrace logs only show a call to uname.
-if [[ -n "$CONFIG_WPDK_DIR" ]]; then
-	uname() (
-		MSYSTEM=CYGWIN command uname "$@" \
-			| sed -e's?^Linux?Windows?;s?GNU/Linux$?WSL?;s?^CYGWIN_NT[^ ]*?Windows?'
-	) 2> /dev/null
-fi
-
 # Check if PCI device is in PCI_ALLOWED and not in PCI_BLOCKED
 # Env:
 # if PCI_ALLOWED is empty assume device is allowed
@@ -294,16 +284,7 @@ ge() { cmp_versions "$1" ">=" "$2"; }
 eq() { cmp_versions "$1" "==" "$2"; }
 neq() { ! eq "$1" "$2"; }
 
-if [[ "$(uname -s)" = Windows ]]; then
-	# On Windows, TerminateProcess causes a hard stop.
-	# If wpdk_kill.sh exists, use it to call the SIGTERM handler.
-	if [[ -e "${CONFIG_WPDK_DIR}/bin/wpdk_kill.sh" ]]; then
-		alias kill='${CONFIG_WPDK_DIR}/bin/wpdk_kill.sh'
-	fi
-
-	# Define aliases for MSYS and Cygwin
-	if [[ "$(uname -o)" != WSL ]]; then
-		sudo() { { [[ "$1" = -E ]] && shift; [[ "$1" = -u ]] && shift 2; } 2>/dev/null; "$@"; }
-		alias ps=procps
-	fi
+# Source definitions for Windows
+if [[ -e "$CONFIG_WPDK_DIR/bin/wpdk_common.sh" ]]; then
+	source "$CONFIG_WPDK_DIR/bin/wpdk_common.sh"
 fi
